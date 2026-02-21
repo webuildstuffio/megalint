@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #121214;
+  --color-bg-elevated: #1a1a1e;
+  --color-bg-card: #1e1e23;
+  --color-bg-card-hover: #252529;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-hover: rgba(255, 255, 255, 0.15);
+  --color-text: #f0efe9;
+  --color-text-secondary: #a8a8b0;
+  --color-text-dim: #6e6e7a;
+  --color-accent: #a78bfa;
+  --color-accent-bright: #c4b5fd;
+  --color-accent-dim: rgba(167, 139, 250, 0.10);
+  --color-accent-glow: rgba(167, 139, 250, 0.06);
+  --color-teal: #5eead4;
+  --color-teal-bright: #99f6e4;
+  --color-teal-dim: rgba(94, 234, 212, 0.10);
+  --color-red: #f87171;
+  --color-amber: #fbbf24;
+  --color-green: #34d399;
+  --color-blue: #60a5fa;
+  --color-claude: #E27B4E;
+  --color-claude-dim: rgba(226, 123, 78, 0.12);
+}
+
+@layer base {
+  :root {
+    --bg: #0c0c0f;
+    --bg-elevated: #161619;
+    --bg-card: #1c1c22;
+    --bg-card-hover: #24242a;
+    --border: rgba(255, 255, 255, 0.10);
+    --border-hover: rgba(255, 255, 255, 0.18);
+    --text: #f0efe9;
+    --text-secondary: #a8a8b0;
+    --text-dim: #6e6e7a;
+    --accent: #a78bfa;
+    --accent-bright: #c4b5fd;
+    --accent-dim: rgba(167, 139, 250, 0.10);
+    --accent-glow: rgba(167, 139, 250, 0.06);
+    --teal: #5eead4;
+    --teal-bright: #99f6e4;
+    --teal-dim: rgba(94, 234, 212, 0.10);
+    --red: #f87171;
+    --amber: #fbbf24;
+    --green: #34d399;
+    --blue: #60a5fa;
+    --claude: #E27B4E;
+    --claude-dim: rgba(226, 123, 78, 0.12);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background: #121214;
+    color: var(--text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    line-height: 1.6;
+  }
+
+  .display {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+
+  code, pre, .mono {
+    font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  }
+
+  ::selection {
+    background: var(--accent);
+    color: black;
+  }
+
+  /* Noise texture overlay */
+  .noise::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* Glow effect for accent elements */
+  .glow-accent {
+    box-shadow: 0 0 40px rgba(167, 139, 250, 0.15), 0 0 80px rgba(167, 139, 250, 0.05);
+  }
+
+  .glow-text {
+    text-shadow: 0 0 40px rgba(167, 139, 250, 0.3);
+  }
+
+  @supports (padding-top: env(safe-area-inset-top)) {
+    body {
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+  }
+}

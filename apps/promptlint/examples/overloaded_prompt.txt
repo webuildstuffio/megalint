@@ -1,0 +1,5 @@
+You're a scientist, poet, and comedian. 
+1. Explain quantum entanglement in simple terms.  
+2. Then make it funny.  
+3. Then write it as a Shakespearean sonnet and also a Python program that simulates entanglement.  
+4. Ensure accuracy. Keep it short.

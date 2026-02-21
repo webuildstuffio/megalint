@@ -1,0 +1,408 @@
+{
+  "meta": {
+    "run_id": "0c41d44_2026-02-20_17-36-18",
+    "timestamp": "2026-02-20T22:36:21Z",
+    "git": {
+      "commit": "0c41d44",
+      "branch": "main",
+      "dirty": true,
+      "message": "Add passportio agent and update shared configs"
+    },
+    "model": "claude-sonnet-4-6",
+    "agents_scanned": 1
+  },
+  "scoring": {
+    "combined": 93.3,
+    "grade": "A",
+    "passed": true,
+    "pass_threshold": 70,
+    "blocking_errors": true,
+    "pillars": {
+      "structure": {
+        "score": 97.0,
+        "weight": 30,
+        "tool": "AgentLinter"
+      },
+      "quality": {
+        "score": 94.3,
+        "weight": 25,
+        "tool": "PromptLint"
+      },
+      "consistency": {
+        "score": 88.0,
+        "weight": 25,
+        "tool": "Home-Grow"
+      }
+    },
+    "quality_detail": {
+      "clarity": 8.4,
+      "security": 10.0,
+      "cost": 9.9
+    }
+  },
+  "agents": {
+    "kodo": {
+      "agent": "kodo",
+      "agentlinter": {
+        "score": 97,
+        "categories": {
+          "Structure": 100,
+          "Clarity": 88,
+          "Completeness": 100,
+          "Security": 100,
+          "Consistency": 100,
+          "Memory": 100,
+          "Runtime Config": 99,
+          "Skill Safety": 100,
+          "Remote-Ready": 94
+        },
+        "diagnostics": [
+          {
+            "severity": "info",
+            "message": "No file map found. With 5+ files, a directory tree helps the agent navigate.",
+            "rule": "structure/has-file-map"
+          },
+          {
+            "severity": "info",
+            "message": "No version or update date found. Helps track freshness of instructions.",
+            "rule": "structure/has-version-or-update-date"
+          },
+          {
+            "severity": "info",
+            "message": "No version or update date found. Helps track freshness of instructions.",
+            "rule": "structure/has-version-or-update-date"
+          },
+          {
+            "severity": "warning",
+            "message": "Vague instruction: \"Don't try to handle technical or research requests — route them. Kodo's value is...\"",
+            "rule": "clarity/no-vague-instructions"
+          },
+          {
+            "severity": "warning",
+            "message": "Absolute rule without escape hatch: \"**Technical**: Continuous exploration of bleeding-edge AI tooling. Nev\"",
+            "rule": "clarity/escape-hatch-missing"
+          },
+          {
+            "severity": "info",
+            "message": "Overly complex sentence (41 words). Break into shorter instructions.",
+            "rule": "clarity/sentence-complexity"
+          },
+          {
+            "severity": "info",
+            "message": "Overly complex sentence (48 words). Break into shorter instructions.",
+            "rule": "clarity/sentence-complexity"
+          },
+          {
+            "severity": "warning",
+            "message": "10 instruction items with no priority signals. The agent can't distinguish critical from optional.",
+            "rule": "clarity/priority-signal-missing"
+          },
+          {
+            "severity": "warning",
+            "message": "No verification criteria found. Without success criteria, the agent can't confirm task completion.",
+            "rule": "completeness/verification-criteria-required"
+          },
+          {
+            "severity": "info",
+            "message": "Memory strategy exists but missing explicit 'write it down' principle. Mental notes don't survive restarts.",
+            "rule": "memory/no-mental-notes"
+          },
+          {
+            "severity": "info",
+            "message": "No context window awareness. The agent should know how to handle long conversations and context overflow.",
+            "rule": "memory/has-context-window-awareness"
+          },
+          {
+            "severity": "info",
+            "message": "No runtime config (clawdbot.json / openclaw.json) found. Runtime checks skipped.",
+            "rule": "runtime/config-exists"
+          },
+          {
+            "severity": "warning",
+            "message": "No explicit workspace path found. Remote/headless agents need a documented workspace path to operate correctly.",
+            "rule": "remote-ready/workspace-path-specified"
+          },
+          {
+            "severity": "info",
+            "message": "No model settings found. Specifying the model ensures consistent behavior across remote runs.",
+            "rule": "remote-ready/model-settings-specified"
+          }
+        ]
+      },
+      "promptlint": {
+        "AGENTS.md": {
+          "clarity": 8.25,
+          "security": 10.0,
+          "cost_efficiency": 10.0,
+          "overall": 9.416666666666666,
+          "issues": [
+            {
+              "severity": "medium",
+              "category": "clarity",
+              "description": "Ambiguous phrase: \"try to\""
+            },
+            {
+              "severity": "medium",
+              "category": "clarity",
+              "description": "Vague quantity: \"few\""
+            }
+          ]
+        },
+        "BOOT.md": {
+          "clarity": 8.5,
+          "security": 10.0,
+          "cost_efficiency": 10.0,
+          "overall": 9.5,
+          "issues": []
+        },
+        "HEARTBEAT.md": {
+          "clarity": 7.775,
+          "security": 10.0,
+          "cost_efficiency": 10.0,
+          "overall": 9.258333333333333,
+          "issues": [
+            {
+              "severity": "medium",
+              "category": "clarity",
+              "description": "Vague quantity: \"few\""
+            },
+            {
+              "severity": "medium",
+              "category": "clarity",
+              "description": "Vague quantity: \"a lot\""
+            }
+          ]
+        },
+        "IDENTITY.md": {
+          "clarity": 7.0,
+          "security": 10.0,
+          "cost_efficiency": 10.0,
+          "overall": 9.0,
+          "issues": []
+        },
+        "MEMORY.md": {
+          "clarity": 8.825,
+          "security": 10.0,
+          "cost_efficiency": 9.5,
+          "overall": 9.441666666666666,
+          "issues": [
+            {
+              "severity": "medium",
+              "category": "clarity",
+              "description": "Ambiguous phrase: \"could\""
+            },
+            {
+              "severity": "medium",
+              "category": "clarity",
+              "description": "Ambiguous phrase: \"might\""
+            },
+            {
+              "severity": "medium",
+              "category": "clarity",
+              "description": "Ambiguous phrase: \"could\""
+            },
+            {
+              "severity": "medium",
+              "category": "clarity",
+              "description": "Ambiguous phrase: \"could\""
+            },
+            {
+              "severity": "medium",
+              "category": "clarity",
+              "description": "Ambiguous phrase: \"around\""
+            },
+            {
+              "severity": "medium",
+              "category": "clarity",
+              "description": "Ambiguous phrase: \"could\""
+            },
+            {
+              "severity": "medium",
+              "category": "clarity",
+              "description": "Vague quantity: \"few\""
+            },
+            {
+              "severity": "medium",
+              "category": "clarity",
+              "description": "Vague quantity: \"some\""
+            },
+            {
+              "severity": "medium",
+              "category": "cost",
+              "description": "High token count: 3008 tokens"
+            }
+          ]
+        },
+        "SOUL.md": {
+          "clarity": 9.5,
+          "security": 10.0,
+          "cost_efficiency": 10.0,
+          "overall": 9.833333333333334,
+          "issues": []
+        },
+        "TOOLS.md": {
+          "clarity": 8.0,
+          "security": 10.0,
+          "cost_efficiency": 10.0,
+          "overall": 9.333333333333334,
+          "issues": []
+        },
+        "USER.md": {
+          "clarity": 9.3125,
+          "security": 10.0,
+          "cost_efficiency": 10.0,
+          "overall": 9.770833333333334,
+          "issues": [
+            {
+              "severity": "medium",
+              "category": "clarity",
+              "description": "Ambiguous phrase: \"could\""
+            },
+            {
+              "severity": "medium",
+              "category": "clarity",
+              "description": "Vague quantity: \"large\""
+            }
+          ]
+        }
+      }
+    }
+  },
+  "homegrow": {
+    "passes": 20,
+    "warnings": 6,
+    "errors": 0,
+    "checks": [
+      {
+        "status": "OK",
+        "context": "shared",
+        "message": "USER_CORE.md exists"
+      },
+      {
+        "status": "OK",
+        "context": "shared",
+        "message": "AGENT_ROSTER.md exists"
+      },
+      {
+        "status": "OK",
+        "context": "shared",
+        "message": "SECURITY_RULES.md exists"
+      },
+      {
+        "status": "OK",
+        "context": "shared",
+        "message": "MEMORY_WORKFLOW.md exists"
+      },
+      {
+        "status": "OK",
+        "context": "shared",
+        "message": "TOOLS_BASE.md exists"
+      },
+      {
+        "status": "OK",
+        "context": "shared",
+        "message": "CONVENTIONS.md exists"
+      },
+      {
+        "status": "OK",
+        "context": "kodo",
+        "message": "all required files present"
+      },
+      {
+        "status": "OK",
+        "context": "kodo",
+        "message": "BOOT.md refs USER_CORE.md"
+      },
+      {
+        "status": "OK",
+        "context": "kodo",
+        "message": "BOOT.md refs AGENT_ROSTER.md"
+      },
+      {
+        "status": "OK",
+        "context": "kodo",
+        "message": "BOOT.md has Standard section with checklist"
+      },
+      {
+        "status": "OK",
+        "context": "roster",
+        "message": "count matches (7 agents)"
+      },
+      {
+        "status": "OK",
+        "context": "kodo",
+        "message": "SOUL.md has anti-sycophancy opener"
+      },
+      {
+        "status": "OK",
+        "context": "kodo",
+        "message": "AGENTS.md has action tiers with Always + Never"
+      },
+      {
+        "status": "OK",
+        "context": "kodo",
+        "message": "SOUL.md has tone calibration"
+      },
+      {
+        "status": "OK",
+        "context": "kodo",
+        "message": "SOUL.md has continuity line"
+      },
+      {
+        "status": "OK",
+        "context": "kodo",
+        "message": "AGENTS.md has security section"
+      },
+      {
+        "status": "OK",
+        "context": "kodo",
+        "message": "AGENTS.md has memory workflow"
+      },
+      {
+        "status": "OK",
+        "context": "kodo",
+        "message": "active heartbeat with 12 task(s)"
+      },
+      {
+        "status": "WARN",
+        "context": "kodo",
+        "message": "AGENTS.md ~959 tokens (budget: ≤800)"
+      },
+      {
+        "status": "WARN",
+        "context": "kodo",
+        "message": "SOUL.md ~452 tokens (budget: ≤200)"
+      },
+      {
+        "status": "WARN",
+        "context": "kodo",
+        "message": "USER.md ~1395 tokens (budget: ≤350)"
+      },
+      {
+        "status": "WARN",
+        "context": "kodo",
+        "message": "HEARTBEAT.md ~403 tokens (budget: ≤100)"
+      },
+      {
+        "status": "WARN",
+        "context": "kodo",
+        "message": "MEMORY.md ~2786 tokens (budget: ≤500)"
+      },
+      {
+        "status": "WARN",
+        "context": "kodo",
+        "message": "USER.md missing timezone (expected: timezone name, abbreviation, or IANA zone)"
+      },
+      {
+        "status": "OK",
+        "context": "kodo",
+        "message": "USER.md uses canonical 'mild autism traits'"
+      },
+      {
+        "status": "OK",
+        "context": "kodo",
+        "message": "USER.md uses canonical 'Bipolar II'"
+      }
+    ]
+  }
+}

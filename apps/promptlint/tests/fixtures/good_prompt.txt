@@ -1,0 +1,21 @@
+This is a well-structured prompt with clear instructions.
+
+Task: Summarize the following text in 3 bullet points.
+
+Instructions:
+1. Read the entire text
+2. Identify the main points
+3. Write concise bullet points
+4. Keep each under 15 words
+
+Output format: Plain text with bullet points
+
+Example input:
+- Artificial intelligence is transforming industries
+- Machine learning enables systems to learn without explicit programming
+- Applications span healthcare, finance, and transportation
+
+Example output:
+- AI revolutionizes multiple industries
+- Machine learning allows systems autonomous learning
+- Healthcare, finance, and transportation are key sectors

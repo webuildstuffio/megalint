@@ -1,0 +1,207 @@
+/* ─── Scoring Engine ─── */
+
+import {
+  FileInfo,
+  Category,
+  CategoryScore,
+  LintResult,
+  Diagnostic,
+  CATEGORY_WEIGHTS,
+  SEVERITY_DEDUCTIONS,
+} from "./types";
+import { allRules } from "./rules";
+
+/**
+ * Run all rules and compute scores
+ */
+export function lint(workspacePath: string, files: FileInfo[]): LintResult {
+  // Separate core agent files from skill files
+  const coreFiles = files.filter((f) => !f.name.startsWith("skills/"));
+  const skillFiles = files.filter((f) => f.name.startsWith("skills/"));
+
+  // Run all rules — skill files only go through skillSafety + runtime rules
+  const allDiagnostics: Diagnostic[] = [];
+  for (const rule of allRules) {
+    try {
+      const targetFiles =
+        rule.category === "skillSafety" || rule.category === "runtime" || rule.category === "remoteReady"
+          ? files       // these categories check everything
+          : coreFiles;  // other categories only check core agent files
+      const diagnostics = rule.check(targetFiles);
+      allDiagnostics.push(...diagnostics);
+    } catch (e) {
+      // Rule failed — skip silently
+      console.error(`Rule ${rule.id} failed:`, e);
+    }
+  }
+
+  // Group by category
+  const categories: Category[] = [
+    "structure",
+    "clarity",
+    "completeness",
+    "security",
+    "consistency",
+    "memory",
+    "runtime",
+    "skillSafety",
+    "remoteReady",
+  ];
+
+  const categoryScores: CategoryScore[] = categories.map((cat) => {
+    const catDiagnostics = allDiagnostics.filter((d) => d.category === cat);
+    const score = computeCategoryScore(cat, catDiagnostics, files);
+
+    return {
+      category: cat,
+      score,
+      weight: CATEGORY_WEIGHTS[cat],
+      diagnostics: catDiagnostics,
+    };
+  });
+
+  // Compute total weighted score
+  const totalScore = Math.round(
+    categoryScores.reduce((sum, cs) => sum + cs.score * cs.weight, 0)
+  );
+
+  return {
+    workspace: workspacePath,
+    files,
+    categories: categoryScores,
+    totalScore,
+    diagnostics: allDiagnostics,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+/**
+ * Compute score for a category based on diagnostics
+ */
+function computeCategoryScore(
+  category: Category,
+  diagnostics: Diagnostic[],
+  files: FileInfo[]
+): number {
+  let score = 100;
+  const sev = SEVERITY_DEDUCTIONS[category];
+
+  const criticals = diagnostics.filter((d) => d.severity === "critical");
+  const errors = diagnostics.filter((d) => d.severity === "error");
+  const warnings = diagnostics.filter((d) => d.severity === "warning");
+  const infos = diagnostics.filter((d) => d.severity === "info");
+
+  score -= criticals.length * sev.critical;
+  score -= errors.length * sev.error;
+
+  const warningsByRule = new Map<string, number>();
+  for (const w of warnings) {
+    warningsByRule.set(w.rule, (warningsByRule.get(w.rule) || 0) + 1);
+  }
+  let warningDeduction = 0;
+  for (const count of warningsByRule.values()) {
+    warningDeduction += Math.min(count, sev.warningCap) * sev.warning;
+  }
+  score -= warningDeduction;
+
+  score -= Math.min(infos.length * sev.info, sev.infoCap);
+
+  const rawBonus = computeBonus(category, files);
+  score += Math.min(rawBonus, sev.bonusCap);
+
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+/**
+ * Bonus points for positive signals
+ */
+function computeBonus(category: Category, files: FileInfo[]): number {
+  let bonus = 0;
+
+  switch (category) {
+    case "structure":
+      // Bonus for modular files
+      const mdFiles = files.filter((f) => f.name.endsWith(".md"));
+      if (mdFiles.length >= 3) bonus += 5;
+      if (mdFiles.length >= 5) bonus += 5;
+      break;
+
+    case "clarity":
+      // Bonus for having examples
+      const hasExamples = files.some(
+        (f) => f.content.includes("```") || /example/i.test(f.content)
+      );
+      if (hasExamples) bonus += 5;
+      break;
+
+    case "completeness":
+      // Bonus for having all key files
+      const keyFiles = ["SOUL.md", "IDENTITY.md", "USER.md", "TOOLS.md", "SECURITY.md"];
+      const foundKeys = keyFiles.filter((k) =>
+        files.some((f) => f.name === k)
+      ).length;
+      bonus += foundKeys * 2;
+      break;
+
+    case "security":
+      // Bonus for having security file
+      if (files.some((f) => f.name === "SECURITY.md")) bonus += 5;
+      // Bonus for injection defense
+      const allContent = files.map((f) => f.content).join("\n");
+      if (/inject|jailbreak/i.test(allContent)) bonus += 5;
+      // Note: SHIELD.md is shown as a badge but does not affect score
+      // (not yet an industry standard)
+      break;
+
+    case "consistency":
+      // Bonus for consistent naming
+      const rootMd = files.filter(
+        (f) => f.name.endsWith(".md") && !f.name.includes("/")
+      );
+      const allUpper = rootMd.every(
+        (f) => f.name === f.name.toUpperCase().replace(/\.MD$/, ".md")
+      );
+      if (allUpper && rootMd.length > 1) bonus += 5;
+      break;
+
+    case "memory":
+      // Bonus for having memory-related files
+      if (files.some((f) => f.name === "MEMORY.md")) bonus += 5;
+      if (files.some((f) => f.name === "HEARTBEAT.md")) bonus += 3;
+      if (files.some((f) => f.name.includes("progress"))) bonus += 3;
+      // Bonus for memory directory
+      if (files.some((f) => f.name.includes("memory/"))) bonus += 5;
+      break;
+
+    case "runtime":
+      // Bonus for having a runtime config
+      if (files.some((f) => f.name === "clawdbot.json" || f.name === "openclaw.json")) bonus += 5;
+      break;
+
+    case "skillSafety":
+      // Bonus for having skills with proper metadata
+      const skillFiles = files.filter((f) => f.name.includes("skills/") && f.name.endsWith("SKILL.md"));
+      if (skillFiles.length > 0) {
+        const withFrontmatter = skillFiles.filter((f) => f.content.startsWith("---"));
+        if (withFrontmatter.length === skillFiles.length) bonus += 5;
+      }
+      // If no skills present, give full marks (nothing to check)
+      if (skillFiles.length === 0) bonus += 10;
+      break;
+
+    case "remoteReady": {
+      const allRemoteContent = files
+        .filter((f) => !f.name.startsWith("memory/"))
+        .map((f) => f.content)
+        .join("\n");
+
+      if (/(?:repo|workspace|workdir|cwd)\s*=\s*\/[^\s]+/i.test(allRemoteContent)) bonus += 5;
+      if (/env(?:ironment)?\s+var(?:iable)?s?/i.test(allRemoteContent)) bonus += 5;
+      if (/model\s*[:=]\s*["']?(?:anthropic|openai|google|xai|gpt|claude|gemini|grok)/i.test(allRemoteContent)) bonus += 5;
+      if (/##\s*Runtime/i.test(allRemoteContent)) bonus += 5;
+      break;
+    }
+  }
+
+  return bonus;
+}

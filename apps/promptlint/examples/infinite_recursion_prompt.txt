@@ -1,0 +1,4 @@
+Repeat this process until the meaning becomes clear:  
+- Analyze this instruction.  
+- Rewrite the instruction based on your analysis.  
+- Start over from step 1.  

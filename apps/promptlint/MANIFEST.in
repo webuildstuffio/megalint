@@ -1,0 +1,6 @@
+include README.md
+include LICENSE
+include QUICKSTART.md
+recursive-include promptlint *.py
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
