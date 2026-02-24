@@ -152,7 +152,7 @@ export const completenessRules: Rule[] = [
             file: "(workspace)",
             message:
               "No user context found. We serve one person — every agent should know who Nicholas is. Commercial products can't do this (millions of anonymous users). An agent without user context treats every interaction as a stranger encounter. With it: a conversation with a colleague who knows you.",
-            fix: "Create USER.md with domain-specific lens on Nicholas. Reference shared/USER_CORE.md for shared facts — don't duplicate. Kodo needs emotional patterns, Basil needs dietary preferences, Forge needs tech stack.",
+            fix: "Create USER.md with domain-specific lens on Nicholas. Reference shared/USER_CORE.md for shared facts — don't duplicate. Kodo needs emotional patterns, Basil needs dietary preferences, Forger needs tech stack.",
           },
         ];
       }
@@ -320,7 +320,7 @@ export const completenessRules: Rule[] = [
             message: isConversational
               ? 'No verification criteria found. For conversational agents, "done" is contextual — consider domain-specific completion signals rather than formal criteria.'
               : "No verification criteria found. Without a definition of 'done', agents can respond with 'I'll look into that' without actually looking into anything. See docs/MASTER_SUMMARY.md #8.",
-            fix: 'Add verification language, domain-specific is best. Forge: "run tests before reporting done." Passportio: "triple-verify deadlines against official sources." Generic: "Task complete when: tested, verified, user can act on it."',
+            fix: 'Add verification language, domain-specific is best. Forger: "run tests before reporting done." Passportio: "triple-verify deadlines against official sources." Generic: "Task complete when: tested, verified, user can act on it."',
           },
         ];
       }

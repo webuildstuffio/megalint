@@ -342,8 +342,8 @@ export const clarityRules: Rule[] = [
       const SECURITY_TERMS = /\b(api.?key|tokens?|secrets?|passwords?|credentials?|private.?key|leaks?|expos|file.?paths?\b.*\bexternal)/i;
       // Safety/ethical boundaries that should stay absolute
       const SAFETY_TERMS = /\b(diagnos|therap|medical|prescri|emotion|sacred|confidential|privacy|personal.?shar|dismiss|preachy|hostile|harm|abuse|manipulat|discriminat|illegal|pushy)\b/i;
-      // Data privacy — health data, lab results, PII boundaries should be absolute
-      const DATA_PRIVACY = /\b(health\s+(data|metric)|sensitive\s+data|private\s+(data|health)|lab\s+result|medication\s+info|group\s+chat|exfiltrat|shared\s+(or\s+group\s+)?context|raw\s+(health\s+)?data)\b/i;
+      // Data privacy — health data, lab results, financial data, PII boundaries should be absolute
+      const DATA_PRIVACY = /\b(health\s+(data|metric)|sensitive\s+data|deeply\s+sensitive|private\s+(data|health)|lab\s+result|medication\s+info|group\s+(chat|context)|exfiltrat|shared\s+(or\s+group\s+)?context|raw\s+(health\s+)?data|financial\s+(data|detail|info)|account\s+info|salary\s+data|tax\s+data)\b/i;
       // Operational best practices that are legitimately absolute
       const OPS_TERMS = /\b(screenshots?|snapshots?|timeouts?|backups?|encrypt|sanitiz|validat|authenticat)\b/i;
       // Code execution / git safety — hard boundaries that should stay absolute
@@ -362,6 +362,8 @@ export const clarityRules: Rule[] = [
       const SOURCE_HANDLING = /\b(sources?\s+disagree|sources?\s+conflict|present\s+both|show\s+both|conflicting\s+sources?)\b/i;
       // Confirmation/attribution requirements — workflow integrity rules that should stay absolute
       const WORKFLOW_INTEGRITY = /\b(without\s+confirmation|tag\s+items?\s+as|require\s+confirmation|confirm(ation)?\s+(before|from)|attribute|ownership)\b/i;
+      // File description lines — "MEMORY.md — distilled wisdom", "TOOLS.md — tool reference" are labels not instructions
+      const FILE_DESCRIPTION = /\b(MEMORY|TOOLS|AGENTS|SOUL|USER|IDENTITY|HEARTBEAT|BOOT|BOOTSTRAP)\.md\s*[—–-]\s*/i;
       // Data integrity / evidence-first — health and research agents need absolute data rules
       const DATA_INTEGRITY = /\b(data\s+first|evidence[- ]first|lead\s+with\s+(the\s+)?(number|data|trend)|alarm\s+on\s+trends?|never\s+on\s+noise|track\s+everything|cite\s+the\s+(mechanism|source|study))\b/i;
       const NARRATIVE_FILES = ["USER.md", "MEMORY.md", "BOOT.md", "IDENTITY.md", "BOOTSTRAP.md"];
@@ -399,6 +401,7 @@ export const clarityRules: Rule[] = [
           if (SOURCE_HANDLING.test(line)) continue;
           if (WORKFLOW_INTEGRITY.test(line)) continue;
           if (DATA_INTEGRITY.test(line)) continue;
+          if (FILE_DESCRIPTION.test(line)) continue;
           // Check 3-line window for escape hatch
           const window = file.lines.slice(i, i + 4).join(" ");
           if (!ESCAPE_PATTERNS.test(window)) {
@@ -805,7 +808,7 @@ export const clarityRules: Rule[] = [
         /\bi['']m glad you asked\b/i,
       ];
       // Lines with negation BEFORE the phrase are defensive (teaching what NOT to say) — skip
-      const NEGATION_PREFIX = /\b(never|don['']t|do\s+not|avoid|prohibit|forbid|stop\s+saying|not)\b/i;
+      const NEGATION_PREFIX = /\b(never|don['']t|do\s+not|avoid|prohibit|forbid|stop\s+saying|not|skip)\b/i;
 
       const coreFiles = files.filter(
         (f) => !f.name.startsWith("compound/") && !f.name.startsWith("memory/") && f.name.endsWith(".md")

@@ -299,7 +299,7 @@ export const memoryRules: Rule[] = [
       for (const file of coreFiles) {
         for (let i = 0; i < file.lines.length; i++) {
           const line = file.lines[i];
-          if (NEGATION_PATTERN.test(line.substring(0, 60))) continue;
+          if (NEGATION_PATTERN.test(line)) continue;
           for (const pattern of DATABASE_POSITIVE_PATTERNS) {
             if (pattern.test(line)) {
               diagnostics.push({
