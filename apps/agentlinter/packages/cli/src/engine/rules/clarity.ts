@@ -257,7 +257,8 @@ export const clarityRules: Rule[] = [
       const diagnostics: Diagnostic[] = [];
       const VAGUE_CONDITIONALS = [
         /\bif\b.+\b(too many|too few|too long|too short|too much|too little|enough|large|small|a lot)\b/i,
-        /\bwhen\b.+\b(appropriate|necessary|needed|possible|feasible)\b/i,
+        // Require vague word to immediately follow "when" — avoids FP on "context needed", "info needed" as adjectives
+        /\bwhen\s+(appropriate|necessary|needed|possible|feasible)\b/i,
         /\bunless\b.+\b(necessary|needed)\b/i,
         /\bif\b.+\b(something goes wrong|things? (?:go|get) (?:wrong|bad))\b/i,
       ];
@@ -818,6 +819,8 @@ export const clarityRules: Rule[] = [
         for (let i = 0; i < file.lines.length; i++) {
           const line = file.lines[i];
           if (NEGATION_PREFIX.test(line)) continue;
+          // Skip markdown table rows where the phrase is in quotes — these are tone calibration "avoid" examples
+          if (/^\s*\|.*"[^"]*".*\|/.test(line)) continue;
           for (const pattern of SYCOPHANTIC_PHRASES) {
             if (pattern.test(line)) {
               diagnostics.push({

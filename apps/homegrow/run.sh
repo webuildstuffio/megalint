@@ -235,7 +235,13 @@ check_roster_count() {
 check_bootstrap_cleanup() {
   for agent in "${AGENTS[@]}"; do
     if [[ -f "$AGENTS_DIR/$agent/BOOTSTRAP.md" ]]; then
-      if [[ -f "$AGENTS_DIR/$agent/memory" ]] || [[ -d "$AGENTS_DIR/$agent/memory" ]]; then
+      # Resolve symlinks — megalint passes a temp dir with symlinks to real agent dirs
+      local real_path
+      real_path="$(readlink -f "$AGENTS_DIR/$agent" 2>/dev/null || echo "$AGENTS_DIR/$agent")"
+      # agents-planned/ agents haven't launched yet — BOOTSTRAP.md is always expected
+      if [[ "$real_path" == *agents-planned* ]]; then
+        emit OK "$agent" "BOOTSTRAP.md present (agent not yet bootstrapped)"
+      elif [[ -f "$AGENTS_DIR/$agent/memory" ]] || [[ -d "$AGENTS_DIR/$agent/memory" ]]; then
         emit WARN "$agent" "BOOTSTRAP.md still exists — agent has memory/ dir, likely already bootstrapped. Delete BOOTSTRAP.md to avoid wasting tokens on every startup"
       else
         emit OK "$agent" "BOOTSTRAP.md present (agent not yet bootstrapped)"

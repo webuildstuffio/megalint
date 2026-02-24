@@ -248,10 +248,21 @@ def escape_html(text: str) -> str:
 def format_evaluation_table(evaluation: Dict[str, Any]) -> str:
     rows = ""
     for category, detail in evaluation.items():
-        if category in ("critique", "recommendation"):
+        if category in ("critique", "recommendation", "_usage"):
+            continue
+        if not isinstance(detail, dict):
             continue
         for subcategory, scores in detail.items():
-            rows += f"<tr><td>{escape_html(category)}</td><td>{escape_html(subcategory)}</td><td>{scores['satisfaction']}</td><td>{scores['mark']}</td><td>{escape_html(scores['comment'])}</td></tr>"
+            # LLMs occasionally return a flat int/str instead of the expected dict
+            if not isinstance(scores, dict):
+                satisfaction = str(scores)
+                mark = "⚠️"
+                comment = "(malformed response)"
+            else:
+                satisfaction = scores.get("satisfaction", "-")
+                mark = scores.get("mark", "-")
+                comment = str(scores.get("comment", ""))
+            rows += f"<tr><td>{escape_html(category)}</td><td>{escape_html(subcategory)}</td><td>{satisfaction}</td><td>{mark}</td><td>{escape_html(comment)}</td></tr>"
     return f"<table><tr><th>Category</th><th>Subcategory</th><th>Score</th><th>Mark</th><th>Comment</th></tr>{rows}</table>"
 
 

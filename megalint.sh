@@ -888,7 +888,8 @@ print(f\"{u.get('input_tokens',0)} {u.get('output_tokens',0)}\")
         else
           echo "    $(yellow "No eval output")"
           if [[ -s "$PH_STDERR" ]]; then
-            _ph_err=$(tail -3 "$PH_STDERR" | head -1)
+            # Last line of stderr is the actual error message (not the Python source f-string)
+            _ph_err=$(tail -1 "$PH_STDERR")
             echo "    $(dim "reason: $_ph_err")"
             log "Hardener | $agent | no json | stderr: $_ph_err"
           else

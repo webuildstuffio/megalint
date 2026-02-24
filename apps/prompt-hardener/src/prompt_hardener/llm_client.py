@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import requests
 from typing import List, Dict, Union, Optional, Any
 from openai import OpenAI
@@ -7,6 +8,9 @@ from anthropic import Anthropic
 import boto3
 from prompt_hardener.utils import extract_json_block, to_bedrock_message_format
 from prompt_hardener.schema import PromptInput
+
+MAX_RETRIES = 3
+RETRY_BASE_DELAY = 2.0  # seconds; doubles each retry
 
 openai_client = None
 claude_client = None
@@ -193,78 +197,85 @@ def call_llm_api_for_eval(
     aws_region: Optional[str] = None,
     aws_profile: Optional[str] = None,
 ) -> Union[List[Dict[str, str]], str]:
-    try:
-        if api_mode == "openai":
-            messages = build_openai_messages_for_eval(
-                system_message, criteria_message, criteria, target_prompt
-            )
-        elif api_mode in ("claude", "bedrock"):
-            messages = build_claude_messages_for_eval(
-                system_message, criteria_message, criteria, target_prompt
-            )
-        else:
-            raise ValueError(f"Unsupported api_mode: {api_mode}")
-
-        usage = {"input_tokens": 0, "output_tokens": 0}
-
-        if api_mode == "openai":
-            completion = get_openai_client().chat.completions.create(
-                model=model_name,
-                messages=messages,
-                temperature=0.2,
-                max_tokens=1500,
-                response_format={"type": "json_object"},
-            )
-            content = completion.choices[0].message.content
-            if hasattr(completion, "usage") and completion.usage:
-                usage["input_tokens"] = completion.usage.prompt_tokens or 0
-                usage["output_tokens"] = completion.usage.completion_tokens or 0
-        elif api_mode == "claude":
-            completion = get_claude_client().messages.create(
-                model=model_name,
-                messages=messages,
-                temperature=0.2,
-                max_tokens=1500,
-            )
-            content = completion.content[0].text
-            if hasattr(completion, "usage") and completion.usage:
-                usage["input_tokens"] = getattr(completion.usage, "input_tokens", 0)
-                usage["output_tokens"] = getattr(completion.usage, "output_tokens", 0)
-        elif api_mode == "bedrock":
-            session = (
-                boto3.Session(profile_name=aws_profile)
-                if aws_profile
-                else boto3.Session()
-            )
-            bedrock_client = session.client("bedrock-runtime", region_name=aws_region)
-            json_data = {
-                "anthropic_version": "bedrock-2023-05-31",
-                "messages": messages,
-                "temperature": 0.2,
-                "max_tokens": 1500,
-            }
-            response = bedrock_client.invoke_model(
-                modelId=model_name,
-                body=json.dumps(json_data),
-                contentType="application/json",
-                accept="application/json",
-            )
-            response_body = json.loads(response.get("body").read())
-            content = response_body["content"][0]["text"]
-            resp_usage = response_body.get("usage", {})
-            usage["input_tokens"] = resp_usage.get("input_tokens", 0)
-            usage["output_tokens"] = resp_usage.get("output_tokens", 0)
-        else:
-            raise ValueError(f"Unsupported API mode: {api_mode}")
-
-        result = json.loads(content)
-        result["_usage"] = usage
-        return result
-
-    except Exception as e:
-        raise ValueError(
-            f"Error: Failed to call {api_mode} API with model '{model_name}': {e}"
+    if api_mode == "openai":
+        messages = build_openai_messages_for_eval(
+            system_message, criteria_message, criteria, target_prompt
         )
+    elif api_mode in ("claude", "bedrock"):
+        messages = build_claude_messages_for_eval(
+            system_message, criteria_message, criteria, target_prompt
+        )
+    else:
+        raise ValueError(f"Unsupported api_mode: {api_mode}")
+
+    last_error: Optional[Exception] = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            usage = {"input_tokens": 0, "output_tokens": 0}
+
+            if api_mode == "openai":
+                completion = get_openai_client().chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    temperature=0.2,
+                    max_tokens=1500,
+                    response_format={"type": "json_object"},
+                )
+                content = completion.choices[0].message.content
+                if hasattr(completion, "usage") and completion.usage:
+                    usage["input_tokens"] = completion.usage.prompt_tokens or 0
+                    usage["output_tokens"] = completion.usage.completion_tokens or 0
+            elif api_mode == "claude":
+                completion = get_claude_client().messages.create(
+                    model=model_name,
+                    messages=messages,
+                    temperature=0.2,
+                    max_tokens=1500,
+                )
+                content = completion.content[0].text
+                if hasattr(completion, "usage") and completion.usage:
+                    usage["input_tokens"] = getattr(completion.usage, "input_tokens", 0)
+                    usage["output_tokens"] = getattr(completion.usage, "output_tokens", 0)
+            elif api_mode == "bedrock":
+                session = (
+                    boto3.Session(profile_name=aws_profile)
+                    if aws_profile
+                    else boto3.Session()
+                )
+                bedrock_client = session.client("bedrock-runtime", region_name=aws_region)
+                json_data = {
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "messages": messages,
+                    "temperature": 0.2,
+                    "max_tokens": 1500,
+                }
+                response = bedrock_client.invoke_model(
+                    modelId=model_name,
+                    body=json.dumps(json_data),
+                    contentType="application/json",
+                    accept="application/json",
+                )
+                response_body = json.loads(response.get("body").read())
+                content = response_body["content"][0]["text"]
+                resp_usage = response_body.get("usage", {})
+                usage["input_tokens"] = resp_usage.get("input_tokens", 0)
+                usage["output_tokens"] = resp_usage.get("output_tokens", 0)
+            else:
+                raise ValueError(f"Unsupported API mode: {api_mode}")
+
+            result = json.loads(content)
+            result["_usage"] = usage
+            return result
+
+        except Exception as e:
+            last_error = e
+            if attempt < MAX_RETRIES - 1:
+                delay = RETRY_BASE_DELAY * (2 ** attempt)
+                time.sleep(delay)
+
+    raise ValueError(
+        f"Failed to call {api_mode} API with model '{model_name}' after {MAX_RETRIES} attempts: {last_error}"
+    )
 
 
 def call_llm_api_for_improve(
