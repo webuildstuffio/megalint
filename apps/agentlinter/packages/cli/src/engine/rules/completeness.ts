@@ -112,7 +112,7 @@ export const completenessRules: Rule[] = [
             file: mainFile?.name || "(workspace)",
             message:
               "No boundaries found. Action tiers (Always/When Asked/Ask First/Never) are OpenClaw's signature architecture — no other company structures permissions this cleanly. Without them, agents either do too much (destructive actions) or too little (ask permission for everything). See docs/MASTER_SUMMARY.md #3.",
-            fix: "Add 4-tier structure to AGENTS.md: ## Always / ## When Asked / ## Ask First / ## Never — with concrete actions under each. See _shared/CONVENTIONS.md for format.",
+            fix: "Add 4-tier structure to AGENTS.md: ## Always / ## When Asked / ## Ask First / ## Never — with concrete actions under each. See shared/CONVENTIONS.md for format.",
           },
         ];
       }
@@ -148,7 +148,7 @@ export const completenessRules: Rule[] = [
             file: "(workspace)",
             message:
               "No user context found. We serve one person — every agent should know who Nicholas is. Commercial products can't do this (millions of anonymous users). An agent without user context treats every interaction as a stranger encounter. With it: a conversation with a colleague who knows you.",
-            fix: "Create USER.md with domain-specific lens on Nicholas. Reference _shared/USER_CORE.md for shared facts — don't duplicate. Kodo needs emotional patterns, Basil needs dietary preferences, Forge needs tech stack.",
+            fix: "Create USER.md with domain-specific lens on Nicholas. Reference shared/USER_CORE.md for shared facts — don't duplicate. Kodo needs emotional patterns, Basil needs dietary preferences, Forge needs tech stack.",
           },
         ];
       }

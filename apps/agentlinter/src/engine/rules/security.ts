@@ -65,9 +65,9 @@ export const securityRules: Rule[] = [
     check(files) {
       const allContent = files.map((f) => f.content).join("\n");
       const hasInjectionDefense =
-        /inject|jailbreak|ignore.*previous|ignore.*instructions|prompt.*attack|adversarial|malicious.*prompt/i.test(
-          allContent
-        );
+        /inject|jailbreak|ignore.*previous|ignore.*instructions|prompt.*attack|adversarial|malicious.*prompt/i.test(allContent) ||
+        /hostile|suspicious.*instruction|untrusted.*input|DATA.*not.*commands|instructions.*are.*data/i.test(allContent) ||
+        /external.*content.*hostile|do\s+not\s+follow\s+them/i.test(allContent);
       const hasSecurityFile = files.some((f) => f.name === "SECURITY.md");
 
       if (!hasInjectionDefense && !hasSecurityFile) {
@@ -95,9 +95,8 @@ export const securityRules: Rule[] = [
     check(files) {
       const allContent = files.map((f) => f.content).join("\n");
       const hasPermissions =
-        /permission|authorized|owner|admin|access.*control|role.*based|privilege|restricted/i.test(
-          allContent
-        );
+        /permission|authorized|owner|admin|access.*control|role.*based|privilege|restricted/i.test(allContent) ||
+        /ask\s+first|explicit\s+instruction|confirmation|approval|only\s+nicholas/i.test(allContent);
 
       if (!hasPermissions) {
         return [

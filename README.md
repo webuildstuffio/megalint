@@ -28,7 +28,7 @@ Each tool solves a different layer of prompt quality. No single tool covers ever
 | Required files present | | | **Yes** | |
 | Section hierarchy | **Yes** | | | |
 | Cross-file consistency | **Yes** | | | |
-| Shared file references (BOOT→_shared) | | | **Yes** | |
+| Shared file references (BOOT→shared) | | | **Yes** | |
 | Vague instructions / passive voice | **Yes** | **Yes** | | |
 | Contradictions / conflicting directives | **Yes** | **Yes** | | |
 | Ambiguous pronouns / naked conditionals | **Yes** | | | |

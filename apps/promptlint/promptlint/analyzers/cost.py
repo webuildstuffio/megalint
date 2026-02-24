@@ -19,10 +19,10 @@ class CostAnalyzer:
     }
     
     TOKEN_THRESHOLDS = {
-        'low': 500,
-        'moderate': 1000,
-        'high': 2000,
-        'very_high': 4000,
+        'low': 475,
+        'moderate': 1150,
+        'high': 2300,
+        'very_high': 4600,
     }
     
     def __init__(self):

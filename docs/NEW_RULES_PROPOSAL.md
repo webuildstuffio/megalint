@@ -50,7 +50,7 @@ Every rule below checks for the presence or quality of a **behavioral directive*
 
 ### Rule 1: `clarity/has-resourcefulness-directive`
 
-**Tool**: AgentLinter (cross-file context needed — checks AGENTS.md or _shared/)
+**Tool**: AgentLinter (cross-file context needed — checks AGENTS.md or shared/)
 **Severity**: warning
 **Category**: clarity
 **Master Summary**: #1 (Universal "Figure It Out")
@@ -66,7 +66,7 @@ Every rule below checks for the presence or quality of a **behavioral directive*
 
 This is the single most universal directive across all 27+ reviewed prompts. OpenAI repeats "partial completion >> clarification" **three separate times** across three different prompts (GPT-5 Agent, GPT-5.2, GPT-5 Thinking). Perplexity says "NEVER ask the user for clarification." Notion says "Do not ask permission to use tools." Codex CLI says "keep going until resolved." Every company with an agentic product has this. It's the behavioral difference between a polite assistant that asks permission and a competent colleague that gets things done.
 
-Currently, only Pino has explicit resourcefulness ("5 Laws"). The other 6 agents have zero mandate to exhaust approaches before asking for help. This rule ensures every agent has it — either in their own AGENTS.md or inherited from `_shared/CONVENTIONS.md`.
+Currently, only Pino has explicit resourcefulness ("5 Laws"). The other 6 agents have zero mandate to exhaust approaches before asking for help. This rule ensures every agent has it — either in their own AGENTS.md or inherited from `shared/CONVENTIONS.md`.
 
 **Impact**: An agent without this directive will default to LLM base behavior, which is to ask clarifying questions rather than take action. This is the most common user complaint about AI assistants: "just do it."
 
@@ -543,15 +543,15 @@ The "warm directness" tone is universal across all reviewed prompts: Claude ("he
 **Category**: consistency
 **Master Summary**: General architecture validation
 
-**What it checks**: BOOT.md references `_shared/CONVENTIONS.md`. (Similar to existing Home-Grow check for USER_CORE.md and AGENT_ROSTER.md, but for conventions.)
+**What it checks**: BOOT.md references `shared/CONVENTIONS.md`. (Similar to existing Home-Grow check for USER_CORE.md and AGENT_ROSTER.md, but for conventions.)
 
 ```typescript
-const CONVENTION_REF = /(?:_shared\/)?CONVENTIONS\.md/i;
+const CONVENTION_REF = /(?:shared\/)?CONVENTIONS\.md/i;
 ```
 
 **Why this matters**:
 
-`_shared/CONVENTIONS.md` is the most important shared file — it's the law that all agents inherit. But currently nothing checks that BOOT.md actually loads it. An agent could be created without referencing conventions and would miss all shared behavioral directives.
+`shared/CONVENTIONS.md` is the most important shared file — it's the law that all agents inherit. But currently nothing checks that BOOT.md actually loads it. An agent could be created without referencing conventions and would miss all shared behavioral directives.
 
 The existing Home-Grow checks (#3a, #3b) validate USER_CORE.md and AGENT_ROSTER.md references in BOOT.md. This extends the pattern to the most critical shared file.
 
@@ -625,7 +625,7 @@ CLAUDE.md says "Every SOUL.md must open with a 'skip the filler' line or the age
 **Severity**: warn
 **Master Summary**: #1
 
-**What it checks**: `_shared/CONVENTIONS.md` contains a universal resourcefulness directive:
+**What it checks**: `shared/CONVENTIONS.md` contains a universal resourcefulness directive:
 
 ```bash
 if rg -qi '(figure.it.out|exhaust.*(option|approach)|partial.completion|try.before.ask)' "$SHARED_DIR/CONVENTIONS.md" 2>/dev/null; then
@@ -681,7 +681,7 @@ Counterpart to AgentLinter Rule 16 but in Home-Grow for blocking enforcement. CO
 **Severity**: warn
 **Master Summary**: #7
 
-**What it checks**: `_shared/MEMORY_WORKFLOW.md` contains surfacing guidance:
+**What it checks**: `shared/MEMORY_WORKFLOW.md` contains surfacing guidance:
 
 ```bash
 if rg -qi '(natural|invisible|seamless|never.*(say|announce).*based.on)' "$SHARED_DIR/MEMORY_WORKFLOW.md" 2>/dev/null; then

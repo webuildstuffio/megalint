@@ -47,8 +47,8 @@ export const consistencyRules: Rule[] = [
               category: "consistency",
               rule: this.id,
               file: file.name,
-              message: `Referenced file "${refName}" not found. Broken references are broken instructions — in a multi-file system with _shared/ inheritance, file references are load-bearing. "See MEMORY_WORKFLOW.md for surfacing rules" fails if the file was renamed.`,
-              fix: `Update the reference to the correct path, or create the missing file. Check for renames in _shared/ and agent folders.`,
+              message: `Referenced file "${refName}" not found. Broken references are broken instructions — in a multi-file system with shared/ inheritance, file references are load-bearing. "See MEMORY_WORKFLOW.md for surfacing rules" fails if the file was renamed.`,
+              fix: `Update the reference to the correct path, or create the missing file. Check for renames in shared/ and agent folders.`,
             });
           }
         }
@@ -77,8 +77,8 @@ export const consistencyRules: Rule[] = [
                 category: "consistency",
                 rule: this.id,
                 file: file.name,
-                message: `Referenced file "${refName}" not found. Broken references are broken instructions — in a multi-file system with _shared/ inheritance, file references are load-bearing. "See MEMORY_WORKFLOW.md for surfacing rules" fails if the file was renamed.`,
-                fix: `Update the reference to the correct path, or create the missing file. Check for renames in _shared/ and agent folders.`,
+                message: `Referenced file "${refName}" not found. Broken references are broken instructions — in a multi-file system with shared/ inheritance, file references are load-bearing. "See MEMORY_WORKFLOW.md for surfacing rules" fails if the file was renamed.`,
+                fix: `Update the reference to the correct path, or create the missing file. Check for renames in shared/ and agent folders.`,
               });
             }
           }
@@ -162,7 +162,7 @@ export const consistencyRules: Rule[] = [
               file: file.name,
               line: i + 1,
               message: `Duplicate instruction also in ${existingFile}: "${normalized.substring(0, 60)}..." — duplicates waste tokens (every file loads every message) and create maintenance drift. Update one copy, forget the other, now they contradict.`,
-              fix: "Delete the duplicate. Shared rules → _shared/CONVENTIONS.md (referenced, not copied). Agent-specific → that agent's AGENTS.md only.",
+              fix: "Delete the duplicate. Shared rules → shared/CONVENTIONS.md (referenced, not copied). Agent-specific → that agent's AGENTS.md only.",
             });
           } else {
             seenInstructions.set(normalized, file.name);

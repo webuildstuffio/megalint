@@ -107,15 +107,17 @@ export const skillSafetyRules: Rule[] = [
 
         const description = descMatch[1].trim();
 
-        // Check if description includes "when to use" guidance
+        // Check if description includes "when to use" guidance or action-oriented phrasing
         const hasWhenToUse =
           /when\s+to\s+use/i.test(description) ||
-          /use\s+when/i.test(description) ||
+          /use\s+(this\s+)?(for|when)/i.test(description) ||
           /when\s+claude/i.test(description) ||
-          /when\s+(?:the\s+)?(?:user|agent)/i.test(description) ||
+          /when\s+(?:the\s+)?(?:user|agent|you)/i.test(description) ||
           /for\s+(?:when|situations?\s+where)/i.test(description) ||
           /invok(?:e|ed)\s+when/i.test(description) ||
-          /trigger(?:ed)?\s+when/i.test(description);
+          /trigger(?:ed)?\s+when/i.test(description) ||
+          /use\s+(?:this|it)\s+to/i.test(description) ||
+          /(?:submit|create|run|build|deploy|scan|lint|test|check|generate|search|fetch)\s+/i.test(description);
 
         if (!hasWhenToUse) {
           diagnostics.push({

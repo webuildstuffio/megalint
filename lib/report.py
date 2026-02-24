@@ -134,22 +134,32 @@ def build_report_data(m):
             "weight": m["weight_structure"],
             "tool": "AgentLinter",
         },
-        "quality": {
-            "score": m["pillar_quality"],
-            "weight": m["weight_quality"],
-            "tool": "PromptLint",
-        },
         "consistency": {
             "score": m["pillar_consistency"],
             "weight": m["weight_consistency"],
             "tool": "Home-Grow",
         },
     }
-    if m["pillar_security"] != "N/A":
+    pq = m.get("pillar_quality")
+    if pq is not None and pq != "N/A":
+        pillars["quality"] = {
+            "score": float(pq) if not isinstance(pq, (int, float)) else pq,
+            "weight": m["weight_quality"],
+            "tool": "PromptLint",
+        }
+    ps = m.get("pillar_security")
+    if ps is not None and ps != "N/A":
         pillars["security"] = {
-            "score": float(m["pillar_security"]),
+            "score": float(ps) if not isinstance(ps, (int, float)) else ps,
             "weight": m["weight_security"],
             "tool": "Prompt Hardener",
+        }
+    pb = m.get("pillar_budget")
+    if pb is not None and pb != "N/A":
+        pillars["budget"] = {
+            "score": float(pb) if not isinstance(pb, (int, float)) else pb,
+            "weight": m.get("weight_budget", 15),
+            "tool": "Token Budget",
         }
 
     return {
@@ -175,13 +185,15 @@ def build_report_data(m):
             "pillars": pillars,
             "quality_detail": {
                 "clarity": m["avg_pl_clarity"],
-                "security": m["avg_pl_security"],
-                "cost": m["avg_pl_cost"],
+                "security_raw": m["avg_pl_security"],
+                "cost_efficiency_raw": m["avg_pl_cost"],
+                "note": "Quality pillar = clarity only (0-10 scaled to 0-100). PromptLint security always 10/10 for MDS files (checks for injection patterns, not defense). Real security via Prompt Hardener pillar. Cost excluded — handled by Token Budget pillar.",
             },
         },
         "agents": agents_data,
         "homegrow": {
             "passes": m["hg_passes"],
+            "infos": m.get("hg_infos", 0),
             "warnings": m["hg_warnings"],
             "errors": m["hg_errors"],
             "checks": hg_results,
@@ -325,14 +337,46 @@ def _build_recommendations(report):
                 }
             )
 
-    # Deduplicate by text
+    # Deduplicate: exact match on (agent, text), plus cross-source dedup
+    # for AgentLinter workspace warnings vs Home-Grow shared warnings
+    # which often describe the same underlying issue differently.
     seen = set()
+    seen_topics = set()  # normalized keywords from workspace/shared warnings
     unique = []
     for r in recs:
         key = (r["agent"], r["text"])
-        if key not in seen:
-            seen.add(key)
-            unique.append(r)
+        if key in seen:
+            continue
+
+        # Extract topic words for cross-source dedup (strip citations first)
+        text_lower = r["text"].lower()
+        text_no_refs = re.sub(r'see\s+docs/\S+', '', text_lower)
+        _STOP = {"should", "without", "across", "every", "found",
+                 "agents", "agent", "based", "between", "which",
+                 "their", "these", "those", "memory", "before",
+                 "after", "about", "other", "first", "using",
+                 "never", "approach", "approaches", "master",
+                 "summary", "focused", "audit", "theme", "rules"}
+        topic_words = set(
+            w for w in re.findall(r'[a-z]{5,}', text_no_refs)
+            if w not in _STOP
+        )
+        is_shared = r.get("file", "") == "(workspace)" or r["agent"] == "shared"
+        if is_shared and topic_words:
+            frozen = frozenset(topic_words)
+            # Check if a previous shared-level entry covers >=3 of the same topic words
+            skip = False
+            for prev_topics in seen_topics:
+                overlap = frozen & prev_topics
+                if len(overlap) >= 3:
+                    skip = True
+                    break
+            if skip:
+                continue
+            seen_topics.add(frozen)
+
+        seen.add(key)
+        unique.append(r)
 
     unique.sort(key=lambda r: (_PRIORITY_ORDER.get(r["priority"], 9), r["agent"]))
     return unique
@@ -394,8 +438,12 @@ def write_markdown(report, output_dir, run_id):
     for name, p in pillars.items():
         ew = round(p["weight"] / tw * 100)
         L.append(f"| {name.title()} | {p['score']} | {ew}% | {p['tool']} |")
+    if "quality" not in pillars:
+        L.append("| Quality | skipped | — | PromptLint |")
     if "security" not in pillars:
         L.append("| Security | skipped | — | Prompt Hardener |")
+    if "budget" not in pillars:
+        L.append("| Budget | skipped | — | Token Budget |")
     L.append("")
     L.append(
         f"Threshold: {pass_thr} | Blocking errors: {'on' if blocking_on else 'off'}"
@@ -406,8 +454,8 @@ def write_markdown(report, output_dir, run_id):
 
     L.append("## Per-Agent Scores")
     L.append("")
-    L.append("| Agent | Structure | Clarity | Security | Cost |")
-    L.append("|-------|:---------:|:-------:|:--------:|:----:|")
+    L.append("| Agent | Structure | Quality | Clarity |")
+    L.append("|-------|:---------:|:-------:|:-------:|")
     for name, ad in agents_data.items():
         al_s = ad.get("agentlinter", {}).get("score", "—")
         pl = ad.get("promptlint", {})
@@ -416,16 +464,11 @@ def write_markdown(report, output_dir, run_id):
             cl = round(
                 sum(v.get("clarity", 0) for v in vals) / max(len(vals), 1), 1
             )
-            se = round(
-                sum(v.get("security", 0) for v in vals) / max(len(vals), 1), 1
-            )
-            co = round(
-                sum(v.get("cost_efficiency", 0) for v in vals) / max(len(vals), 1),
-                1,
-            )
+            ql = round(cl * 10, 1)
         else:
-            cl = se = co = "—"
-        L.append(f"| {name} | {al_s} | {cl} | {se} | {co} |")
+            cl = "—"
+            ql = "—"
+        L.append(f"| {name} | {al_s} | {ql} | {cl} |")
     L.append("")
 
     # ── Per-File PromptLint scores ───────────────────────────────────────────
@@ -551,10 +594,11 @@ def write_markdown(report, output_dir, run_id):
         L.append("## Security Evaluation")
         L.append("")
         all_ph_cats = set()
+        _ph_metadata_keys = {"_usage", "_meta", "_config", "_model", "_timestamp"}
         for ad in agents_data.values():
             ph = ad.get("prompt_hardener", {})
             for k, v in ph.items():
-                if isinstance(v, dict):
+                if isinstance(v, dict) and k not in _ph_metadata_keys:
                     all_ph_cats.add(k)
         ph_cats = sorted(all_ph_cats)
         L.append("| Agent | " + " | ".join(ph_cats) + " |")
@@ -583,6 +627,7 @@ def write_markdown(report, output_dir, run_id):
     L.append("| Result | Count |")
     L.append("|--------|:-----:|")
     L.append(f"| PASS | {hg['passes']} |")
+    L.append(f"| INFO | {hg.get('infos', 0)} |")
     L.append(f"| WARN | {hg['warnings']} |")
     L.append(f"| ERROR | {hg['errors']} |")
     L.append("")

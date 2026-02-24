@@ -44,7 +44,7 @@ Each category = one `.ts` file exporting a `Rule[]` array. All merged in `index.
 | Remote-Ready | `remoteReady.ts` | 3 | 2 warning, 1 info |
 | **Total** | | **72** | **2 critical, 11 error, 34 warning, 25 info** |
 
-Category scoring weights (from `types.ts`): clarity 18%, structure 12%, completeness 12%, security 15%, consistency 8%, memory 10%, runtime 10%, skill safety 10%, remote-ready 5%.
+Category scoring weights (from `types.ts`): clarity 20%, structure 10%, completeness 13%, security 14%, consistency 11%, memory 13%, runtime 6%, skill safety 8%, remote-ready 5%.
 
 <details>
 <summary>Full rule ID list</summary>
@@ -69,9 +69,9 @@ All checks live in `apps/homegrow/run.sh` as functions. Config in `apps/homegrow
 
 | # | Check | What It Validates | Fail = |
 |:-:|-------|-------------------|--------|
-| 1 | shared_files | 6 files exist in `_shared/` | error |
+| 1 | shared_files | 6 files exist in `shared/` | error |
 | 2 | required_files | 8 files per agent folder | error |
-| 3 | boot_refs | BOOT.md refs `_shared/USER_CORE.md` and `AGENT_ROSTER.md` | warn |
+| 3 | boot_refs | BOOT.md refs `USER_CORE.md` and `AGENT_ROSTER.md` | warn |
 | 4 | boot_structure | BOOT.md has `## Standard` section with checklist items | warn |
 | 5 | roster_count | AGENT_ROSTER.md rows match agent dir count | error |
 | 6 | bootstrap_cleanup | No stale BOOTSTRAP.md | warn |
@@ -82,7 +82,7 @@ All checks live in `apps/homegrow/run.sh` as functions. Config in `apps/homegrow
 | 11 | security_section | AGENTS.md has `## Security` heading or `SECURITY_RULES.md` ref | warn |
 | 12 | memory_workflow | AGENTS.md refs `MEMORY_WORKFLOW` or has `## Memory` section | warn |
 | 13 | heartbeat | HEARTBEAT.md contract has task lines if active | warn |
-| 14 | token_budgets | Per-file word count × 1.3 vs budget targets | warn |
+| 14 | token_budgets | Per-file tiktoken count vs budget targets | warn |
 | 15 | timezone | USER.md has `\btimezone\b`, word-bounded `ET`, or `\beastern\b` | warn |
 | 16 | canonical_wording | Sensitive terms use canonical phrasing from USER_CORE.md | warn |
 
@@ -309,12 +309,11 @@ Existing overlaps (secret detection, vague wording, contradiction checks) exist 
 
 | Setting | Default | Effect |
 |---------|:-------:|--------|
-| `WEIGHT_STRUCTURE` | 30 | AgentLinter share of combined score |
-| `WEIGHT_QUALITY` | 25 | PromptLint share |
-| `WEIGHT_CONSISTENCY` | 25 | Home-Grow share |
+| `WEIGHT_STRUCTURE` | 25 | AgentLinter share of combined score |
+| `WEIGHT_QUALITY` | 18 | PromptLint share |
+| `WEIGHT_CONSISTENCY` | 22 | Home-Grow share |
 | `WEIGHT_SECURITY` | 20 | Prompt Hardener share |
-| `DEDUCT_ERROR` | 10 | Legacy (unused — consistency uses % model now) |
-| `DEDUCT_WARNING` | 3 | Legacy (unused — consistency uses % model now) |
+| `WEIGHT_BUDGET` | 15 | Token Budget pillar share |
 | `PASS_THRESHOLD` | 70 | Minimum combined score to pass |
 | `BLOCKING_ERRORS` | true | Any Home-Grow ERROR = fail regardless of score |
 
@@ -323,10 +322,10 @@ Existing overlaps (secret detection, vague wording, contradiction checks) exist 
 | Setting | Default | Effect |
 |---------|:-------:|--------|
 | `CHECK_*` | 1 | Enable (1) or disable (0) individual Home-Grow checks |
-| `BUDGET_AGENTS_MD` | 800 | Token budget for AGENTS.md (word count × 1.3) |
-| `BUDGET_SOUL_MD` | 200 | Token budget for SOUL.md |
-| `BUDGET_IDENTITY_MD` | 80 | Token budget for IDENTITY.md |
-| `BUDGET_USER_MD` | 350 | Token budget for USER.md |
-| `BUDGET_TOOLS_MD` | 200 | Token budget for TOOLS.md |
-| `BUDGET_HEARTBEAT_MD` | 100 | Token budget for HEARTBEAT.md |
-| `BUDGET_MEMORY_MD` | 500 | Token budget for MEMORY.md |
+| `BUDGET_AGENTS_MD` | 1150 | Token budget for AGENTS.md (tiktoken cl100k_base) |
+| `BUDGET_SOUL_MD` | 350 | Token budget for SOUL.md |
+| `BUDGET_IDENTITY_MD` | 115 | Token budget for IDENTITY.md |
+| `BUDGET_USER_MD` | 475 | Token budget for USER.md |
+| `BUDGET_TOOLS_MD` | 350 | Token budget for TOOLS.md |
+| `BUDGET_HEARTBEAT_MD` | 150 | Token budget for HEARTBEAT.md |
+| `BUDGET_MEMORY_MD` | 650 | Token budget for MEMORY.md |

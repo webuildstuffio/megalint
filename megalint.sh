@@ -6,8 +6,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-AGENTS_DIR="$REPO_ROOT/agents"
-SHARED_DIR="$REPO_ROOT/_shared"
+
+AGENTS_DIR="$REPO_ROOT/src/agents-refined"
+SHARED_DIR="$REPO_ROOT/src/shared"
+
+# Env overrides (highest priority)
+[[ -n "${MEGALINT_AGENTS_DIR:-}" ]] && AGENTS_DIR="$MEGALINT_AGENTS_DIR"
+[[ -n "${MEGALINT_SHARED_DIR:-}" ]] && SHARED_DIR="$MEGALINT_SHARED_DIR"
 
 command -v rg >/dev/null 2>&1 || { printf '\033[31m%s\033[0m\n' "ripgrep (rg) not found — install for Home-Grow checks"; exit 1; }
 
@@ -16,13 +21,24 @@ PROMPTLINT_BIN="$SCRIPT_DIR/apps/promptlint/.venv/bin/promptlint"
 HARDENER_BIN="$SCRIPT_DIR/apps/prompt-hardener/.venv/bin/prompt-hardener"
 
 PY="$SCRIPT_DIR/apps/promptlint/.venv/bin/python"
+[[ -x "$PY" ]] || { printf '\033[31m%s\033[0m\n' "Python venv not found at $PY — run: cd apps/promptlint && uv venv .venv && uv pip install -e ."; exit 1; }
 NODE="$(command -v node 2>/dev/null)" || { printf '\033[31m%s\033[0m\n' "node not found — install Node.js"; exit 1; }
 
 red()    { printf "\033[31m%s\033[0m" "$1"; }
 yellow() { printf "\033[33m%s\033[0m" "$1"; }
 green()  { printf "\033[32m%s\033[0m" "$1"; }
+cyan()   { printf "\033[36m%s\033[0m" "$1"; }
 bold()   { printf "\033[1m%s\033[0m" "$1"; }
 dim()    { printf "\033[2m%s\033[0m" "$1"; }
+
+score_color() {
+  [[ "$1" == "N/A" ]] && { dim "$1"; return; }
+  local s
+  s=$(printf "%.0f" "$1" 2>/dev/null || echo 0)
+  if [[ $s -ge 90 ]]; then green "$1"
+  elif [[ $s -ge 70 ]]; then yellow "$1"
+  else red "$1"; fi
+}
 
 # ─── Load .env ────────────────────────────────────────────────────────────────
 
@@ -38,11 +54,11 @@ done
 
 # ─── Load config ──────────────────────────────────────────────────────────────
 
-WEIGHT_STRUCTURE=30; WEIGHT_QUALITY=25; WEIGHT_CONSISTENCY=30; WEIGHT_SECURITY=15
+WEIGHT_STRUCTURE=25; WEIGHT_QUALITY=18; WEIGHT_CONSISTENCY=22; WEIGHT_SECURITY=20; WEIGHT_BUDGET=15
 PASS_THRESHOLD=70; BLOCKING_ERRORS=true
-GRADE_S=98; GRADE_A_PLUS=96; GRADE_A=93; GRADE_A_MINUS=90
-GRADE_B_PLUS=85; GRADE_B=80; GRADE_B_MINUS=75
-GRADE_C_PLUS=68; GRADE_C=60; GRADE_C_MINUS=55; GRADE_D=50
+GRADE_S=97; GRADE_A_PLUS=95; GRADE_A=93; GRADE_A_MINUS=90
+GRADE_B_PLUS=87; GRADE_B=83; GRADE_B_MINUS=80
+GRADE_C_PLUS=77; GRADE_C=73; GRADE_C_MINUS=70; GRADE_D=60
 
 CONF_FILE="$SCRIPT_DIR/megalint.conf"
 # shellcheck source=/dev/null
@@ -56,6 +72,7 @@ MODEL_FLAG=""
 FORMAT_FLAG=""
 THRESHOLD_FLAG=""
 BLOCKING_FLAG=""
+AGENTS_DIR_FLAG=""
 POSITIONAL_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -71,6 +88,8 @@ while [[ $# -gt 0 ]]; do
     --pass-threshold)      THRESHOLD_FLAG="$2"; shift 2 ;;
     --pass-threshold=*)    THRESHOLD_FLAG="${1#*=}"; shift ;;
     --no-blocking)         BLOCKING_FLAG="false"; shift ;;
+    --agents-dir|-d)       AGENTS_DIR_FLAG="$2"; shift 2 ;;
+    --agents-dir=*)        AGENTS_DIR_FLAG="${1#*=}"; shift ;;
     --config|-c)           source "$2"; shift 2 ;;
     --config=*)            source "${1#*=}"; shift ;;
     *)                     POSITIONAL_ARGS+=("$1"); shift ;;
@@ -79,6 +98,15 @@ done
 
 [[ -n "$THRESHOLD_FLAG" ]] && PASS_THRESHOLD="$THRESHOLD_FLAG"
 [[ -n "$BLOCKING_FLAG" ]] && BLOCKING_ERRORS="$BLOCKING_FLAG"
+if [[ -n "$AGENTS_DIR_FLAG" ]]; then
+  if [[ -d "$REPO_ROOT/$AGENTS_DIR_FLAG" ]]; then
+    AGENTS_DIR="$REPO_ROOT/$AGENTS_DIR_FLAG"
+  elif [[ -d "$AGENTS_DIR_FLAG" ]]; then
+    AGENTS_DIR="$(cd "$AGENTS_DIR_FLAG" && pwd)"
+  else
+    echo "$(red "Agents directory not found: $AGENTS_DIR_FLAG")"; exit 1
+  fi
+fi
 
 if [[ -n "$FORMAT_FLAG" ]] && [[ ! "$FORMAT_FLAG" =~ ^(json|md|both)$ ]]; then
   echo "$(red "Unknown format: $FORMAT_FLAG (use json, md, or both)")"; exit 1
@@ -89,9 +117,10 @@ if [[ "$HELP_FLAG" == "true" ]]; then
 
 megalint — Unified prompt linter for OpenClaw MDS
 
-Usage: ./megalint.sh [options] [agent...]
+Usage: ./megalint.sh [options] [agent-path...]
 
 Options:
+  -d, --agents-dir DIR       Override agents directory (auto-detects agents/ or src/agents/)
   -y, --yes                  Auto-approve Prompt Hardener API cost (default)
   --no-yes                   Prompt for confirmation before API calls
   -m, --model MODEL          Override model (claude-opus-4-6 | claude-sonnet-4-6)
@@ -101,24 +130,43 @@ Options:
   -c, --config FILE          Load alternate config file
   -h, --help                 Show this help
 
-Scoring (4 pillars, configurable in megalint.conf):
-  Structure    30%   AgentLinter   — workspace structure, clarity, rules
-  Quality      25%   PromptLint    — per-file clarity, security, cost
-  Consistency  25%   Home-Grow     — cross-agent consistency checks
+Token Budget Tiers (2 levels, configurable in rules.conf):
+  INFO   base × 1.25   25% over — heads-up
+  WARN   base × 1.50   50% over — should trim
+  (Token budgets never block — graduated scoring via Token Budget pillar)
+
+Environment Variable Overrides:
+  MEGALINT_AGENTS_DIR        Override agents directory
+  MEGALINT_SHARED_DIR        Override shared directory
+  MEGALINT_BUDGET_AGENTS_MD  Override AGENTS.md token budget (default: 1150)
+  MEGALINT_BUDGET_SOUL_MD    Override SOUL.md token budget (default: 350)
+  MEGALINT_BUDGET_*_MD       Override any file budget (IDENTITY, USER, TOOLS, etc.)
+  MEGALINT_TIER_INFO         Override INFO multiplier (default: 1.25)
+  MEGALINT_TIER_WARN         Override WARN multiplier (default: 1.50)
+
+Scoring (5 pillars, configurable in megalint.conf):
+  Structure    25%   AgentLinter    — workspace structure, clarity, rules
+  Quality      18%   PromptLint     — per-file clarity score (0-10 → 0-100)
+  Consistency  22%   Home-Grow      — cross-agent consistency checks
   Security     20%   Prompt Hardener — LLM injection testing (skipped = redistributed)
+  Token Budget 15%   Length scoring  — per-file token usage vs budget (100 at budget → 0 at 3×)
 
 Models:
   claude-opus-4-6      $5/MTok in, $25/MTok out  (default, strongest)
   claude-sonnet-4-6    $3/MTok in, $15/MTok out  (fast)
 
 Examples:
-  ./megalint.sh                                  # Static analysis (free)
-  ./megalint.sh --yes                            # Include Prompt Hardener
-  ./megalint.sh --format both --yes              # JSON + Markdown reports
-  ./megalint.sh --pass-threshold 85              # Stricter pass bar
-  ./megalint.sh --no-blocking kodo --format md   # Ignore errors for pass/fail
+  ./megalint.sh                                           # All agents (auto-detect)
+  ./megalint.sh --agents-dir src/agents-planned           # All planned agents
+  ./megalint.sh src/agents-planned/soren                  # Single agent by path
+  ./megalint.sh --format both --yes                       # JSON + Markdown reports
+  ./megalint.sh --pass-threshold 85                       # Stricter pass bar
+  ./megalint.sh --no-blocking --agents-dir src/agents     # Prod agents, lenient
+  MEGALINT_BUDGET_SOUL_MD=300 ./megalint.sh               # Raise SOUL.md budget
+  MEGALINT_TIER_WARN=1.40 ./megalint.sh                   # Tighter warn threshold
 
 Config: megalint.conf (weights, thresholds, grades)
+Rules:  apps/homegrow/rules.conf (budgets, tier multipliers, check toggles)
 Env:    .env (API keys — see .env.example)
 
 HELP
@@ -152,20 +200,55 @@ log "Git: commit=$GIT_COMMIT branch=$GIT_BRANCH dirty=$GIT_DIRTY"
 log "Git message: $GIT_MSG"
 log "Working directory: $REPO_ROOT"
 
-# Determine agents
+# Determine agents + resolve directories
+declare -A AGENT_DIRS=()
+declare -a BROKEN_SYMLINKS=()
 if [[ ${#POSITIONAL_ARGS[@]} -gt 0 ]]; then
-  AGENTS=("${POSITIONAL_ARGS[@]}")
+  AGENTS=()
+  for arg in "${POSITIONAL_ARGS[@]}"; do
+    arg="${arg%/}"
+    resolved=""
+    if [[ -d "$REPO_ROOT/$arg" ]]; then
+      resolved="$REPO_ROOT/$arg"
+    elif [[ -d "$arg" ]]; then
+      resolved="$(cd "$arg" && pwd)"
+    elif [[ -d "$AGENTS_DIR/$arg" ]]; then
+      resolved="$AGENTS_DIR/$arg"
+    else
+      echo "$(red "Agent not found: $arg")"; exit 1
+    fi
+    name="$(basename "$resolved")"
+    AGENTS+=("$name")
+    AGENT_DIRS[$name]="$resolved"
+  done
 else
   AGENTS=()
   for d in "$AGENTS_DIR"/*/; do
     [[ -d "$d" ]] || continue
-    [[ "$(basename "$d")" == "template" ]] && continue
-    AGENTS+=("$(basename "$d")")
+    name="$(basename "$d")"
+    [[ "$name" == "template" || "$name" == "nick-template" ]] && continue
+    AGENTS+=("$name")
+    AGENT_DIRS[$name]="${d%/}"
+  done
+  # Broken symlinks don't match */ — scan separately with -L (true for any symlink) and ! -e (true when target missing)
+  for entry in "$AGENTS_DIR"/*; do
+    [[ -L "$entry" && ! -e "$entry" ]] || continue
+    name="$(basename "$entry")"
+    BROKEN_SYMLINKS+=("$name → $(readlink "$entry" 2>/dev/null || echo '?')")
   done
 fi
 
 if [[ ${#AGENTS[@]} -eq 0 ]]; then
   echo "$(red "No agents found in $AGENTS_DIR")"; exit 1
+fi
+
+# Warn about broken symlinks
+if [[ ${#BROKEN_SYMLINKS[@]} -gt 0 ]]; then
+  for _bl in "${BROKEN_SYMLINKS[@]}"; do
+    echo "  $(yellow "WARN:") Broken symlink skipped: $_bl"
+    log "WARN: Broken symlink skipped: $_bl"
+  done
+  echo ""
 fi
 
 log "Agents: ${AGENTS[*]}"
@@ -193,7 +276,7 @@ mkdir -p "$AL_DIR" "$PL_DIR" "$HG_DIR"
 # ─── Tool 1: AgentLinter (background) ────────────────────────────────────────
 (
   for agent in "${AGENTS[@]}"; do
-    agent_dir="$AGENTS_DIR/$agent"
+    agent_dir="${AGENT_DIRS[$agent]}"
     [[ ! -d "$agent_dir" ]] && continue
     json=$($NODE "$AGENTLINTER_BIN" --json --no-share --no-audit "$agent_dir" 2>/dev/null || echo '{}')
     echo "$json" > "$AL_DIR/${agent}.json"
@@ -204,12 +287,14 @@ AL_PID=$!
 # ─── Tool 2: PromptLint (background) ─────────────────────────────────────────
 (
   for agent in "${AGENTS[@]}"; do
-    agent_dir="$AGENTS_DIR/$agent"
+    agent_dir="${AGENT_DIRS[$agent]}"
     [[ ! -d "$agent_dir" ]] && continue
     mkdir -p "$PL_DIR/$agent"
     for mdfile in "$agent_dir"/*.md; do
       [[ -f "$mdfile" ]] || continue
       fname=$(basename "$mdfile")
+      # Skip BOOTSTRAP.md — ephemeral file deleted after first run, not ongoing quality signal
+      [[ "$fname" == "BOOTSTRAP.md" ]] && continue
       outfile="$PL_DIR/$agent/$fname.json"
       if ! "$PROMPTLINT_BIN" score "$mdfile" --format json > "$outfile" 2>/dev/null; then
         echo '{"_error": true, "reason": "PromptLint binary failed"}' > "$outfile"
@@ -224,8 +309,14 @@ AL_PID=$!
 PL_PID=$!
 
 # ─── Tool 3: Home-Grow Linter (background) ───────────────────────────────────
+HG_AGENTS_DIR="$TMPDIR_RUN/hg_agents"
+mkdir -p "$HG_AGENTS_DIR"
+for _a in "${AGENTS[@]}"; do
+  ln -sf "${AGENT_DIRS[$_a]}" "$HG_AGENTS_DIR/$_a"
+done
+
 (
-  bash "$SCRIPT_DIR/apps/homegrow/run.sh" "$AGENTS_DIR" "$SHARED_DIR" "${AGENTS[@]}" \
+  bash "$SCRIPT_DIR/apps/homegrow/run.sh" "$HG_AGENTS_DIR" "$SHARED_DIR" "${AGENTS[@]}" \
     > "$HG_DIR/results.txt" 2>/dev/null
 ) &
 HG_PID=$!
@@ -251,10 +342,11 @@ declare -A AL_SCORES
 TOTAL_AL_SCORE=0
 TOTAL_CRITICALS=0
 TOTAL_WARNINGS=0
+TOTAL_WS_WARNING_COUNT=0
 AGENT_COUNT=0
 
 # Track workspace-level warnings to deduplicate across agents
-declare -A SEEN_WORKSPACE_WARNINGS
+declare -A SEEN_WORKSPACE_WARNINGS=()
 
 for agent in "${AGENTS[@]}"; do
   al_file="$AL_DIR/${agent}.json"
@@ -291,6 +383,7 @@ print(f'{score};;{crits};;{warns};;{cat_str};;{ws_str};;{agent_warns}')
   TOTAL_AL_SCORE=$((TOTAL_AL_SCORE + score))
   TOTAL_CRITICALS=$((TOTAL_CRITICALS + criticals))
   TOTAL_WARNINGS=$((TOTAL_WARNINGS + warnings))
+  TOTAL_WS_WARNING_COUNT=$((TOTAL_WS_WARNING_COUNT + warnings - agent_warnings))
   AGENT_COUNT=$((AGENT_COUNT + 1))
   log "AgentLinter | $agent | score=$score criticals=$criticals warnings=$warnings"
 
@@ -315,16 +408,19 @@ print(f'{score};;{crits};;{warns};;{cat_str};;{ws_str};;{agent_warns}')
       printf "    %-17s %s\n" "$cname" "$cscore"
     done
   fi
-  [[ $criticals -gt 0 ]] && echo "    $(red "$criticals critical(s)")"
+  [[ $criticals -gt 0 ]] && echo "    $(red "$criticals error(s)")"
   [[ ${agent_warnings:-0} -gt 0 ]] && echo "    $(yellow "$agent_warnings warning(s)")"
   echo ""
 done
-echo "  $(bold "Totals:") $TOTAL_CRITICALS critical(s), $TOTAL_WARNINGS warning(s)"
+AGENT_ONLY_WARNINGS=$((TOTAL_WARNINGS - TOTAL_WS_WARNING_COUNT))
+WS_UNIQUE_RULES=${#SEEN_WORKSPACE_WARNINGS[@]}
+
+echo "  $(bold "Totals:") $TOTAL_CRITICALS error(s), $AGENT_ONLY_WARNINGS warning(s)"
 
 # Show deduplicated workspace-level warnings
-if [[ ${#SEEN_WORKSPACE_WARNINGS[@]} -gt 0 ]]; then
+if [[ $WS_UNIQUE_RULES -gt 0 ]]; then
   echo ""
-  dim "  Shared-level warnings (affect all agents, fix once):"
+  dim "  Shared-level warnings (affect all agents, fix once): $WS_UNIQUE_RULES"
   for rule in "${!SEEN_WORKSPACE_WARNINGS[@]}"; do
     dim "    $rule (seen in ${SEEN_WORKSPACE_WARNINGS[$rule]}/${#AGENTS[@]} agents)"
   done
@@ -344,6 +440,7 @@ TOTAL_PL_CLARITY=0
 TOTAL_PL_SECURITY=0
 TOTAL_PL_COST=0
 TOTAL_PL_FILES=0
+TOTAL_PL_FAILURES=0
 
 for agent in "${AGENTS[@]}"; do
   pl_agent_dir="$PL_DIR/$agent"
@@ -367,6 +464,7 @@ print(f\"{s.get('clarity',0):.1f} {s.get('security',0):.1f} {s.get('cost_efficie
     else
       echo "    $(red "ERROR:") PromptLint failed on $fname — check binary/venv"
       log "PromptLint  | $agent/$fname | ERROR: tool failure"
+      TOTAL_PL_FAILURES=$((TOTAL_PL_FAILURES + 1))
       scores="0.0 0.0 0.0 0.0"
     fi
 
@@ -415,23 +513,187 @@ log_section "Tool 3: Home-Grow Linter"
 bold "━━━ Tool 3: Home-Grow Linter ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-HG_ERRORS=0; HG_WARNINGS=0; HG_PASSES=0
+HG_ERRORS=0; HG_WARNINGS=0; HG_INFOS=0; HG_PASSES=0
 declare -a HG_ISSUES=()
+
+if [[ -s "$HG_DIR/results.txt" ]]; then
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    status=$(echo "$line" | cut -d'|' -f1)
+    ctx=$(echo "$line" | cut -d'|' -f2)
+    msg=$(echo "$line" | cut -d'|' -f3-)
+    case "$status" in
+      OK)    echo "  $(green "OK")    $ctx — $msg"; HG_PASSES=$((HG_PASSES + 1)); log "HomeGrow | OK | $ctx | $msg" ;;
+      INFO)  echo "  $(cyan "INFO")  $ctx — $msg"; HG_INFOS=$((HG_INFOS + 1)); HG_ISSUES+=("INFO|$ctx|$msg"); log "HomeGrow | INFO | $ctx | $msg" ;;
+      WARN)  echo "  $(yellow "WARN")  $ctx — $msg"; HG_WARNINGS=$((HG_WARNINGS + 1)); HG_ISSUES+=("WARN|$ctx|$msg"); log "HomeGrow | WARN | $ctx | $msg" ;;
+      ERROR) echo "  $(red "ERROR") $ctx — $msg"; HG_ERRORS=$((HG_ERRORS + 1)); HG_ISSUES+=("ERROR|$ctx|$msg"); log "HomeGrow | ERROR | $ctx | $msg" ;;
+    esac
+  done < "$HG_DIR/results.txt"
+else
+  echo "  $(yellow "WARN:") Home-Grow produced no output — check apps/homegrow/run.sh"
+  log "WARN: Home-Grow results.txt empty or missing"
+fi
+
+echo ""
+echo "  $(bold "Summary:") $(green "$HG_PASSES pass") | $(cyan "$HG_INFOS info") | $(yellow "$HG_WARNINGS warn") | $(red "$HG_ERRORS error")"
+echo ""
+echo ""
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Token Budget Analysis — per-file scored pillar
+# ═══════════════════════════════════════════════════════════════════════════════
+
+log_section "Token Budget Analysis"
+bold "━━━ Token Budgets ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+# Load budget config (same source as Home-Grow)
+HG_CONF="$SCRIPT_DIR/apps/homegrow/rules.conf"
+[[ -f "$HG_CONF" ]] && source "$HG_CONF"
+for _var in AGENTS_MD SOUL_MD IDENTITY_MD USER_MD TOOLS_MD HEARTBEAT_MD MEMORY_MD; do
+  _env="MEGALINT_BUDGET_${_var}"
+  [[ -n "${!_env:-}" ]] && declare "BUDGET_${_var}=${!_env}"
+done
+
+# Serialize AGENT_DIRS to JSON for Python
+_ad_json="{"
+for _a in "${AGENTS[@]}"; do
+  _ad_json+="\"$_a\":\"${AGENT_DIRS[$_a]}\","
+done
+_ad_json="${_ad_json%,}}"
+
+# Compute per-file and per-agent token budget scores
+$PY -c "
+import json, os, sys
+
+sys.path.insert(0, '$SCRIPT_DIR/lib')
+try:
+    from tiktoken_count import count_file
+    def estimate_tokens(path):
+        return count_file(path)
+except ImportError:
+    def estimate_tokens(path):
+        with open(path) as f:
+            words = len(f.read().split())
+        return (words * 13 + 9) // 10
+
+agent_dirs = json.loads('$_ad_json')
+budgets = {
+    'AGENTS.md': int('${BUDGET_AGENTS_MD:-1150}'),
+    'SOUL.md': int('${BUDGET_SOUL_MD:-350}'),
+    'IDENTITY.md': int('${BUDGET_IDENTITY_MD:-115}'),
+    'USER.md': int('${BUDGET_USER_MD:-475}'),
+    'TOOLS.md': int('${BUDGET_TOOLS_MD:-350}'),
+    'HEARTBEAT.md': int('${BUDGET_HEARTBEAT_MD:-150}'),
+    'MEMORY.md': int('${BUDGET_MEMORY_MD:-650}'),
+}
+
+def score_file(tokens, budget):
+    if budget <= 0:
+        return 100.0
+    if tokens <= budget:
+        return 100.0
+    # Linear drop: 100 at budget → 0 at 3× budget (soft guideline slope)
+    over = tokens - budget
+    headroom = budget * 2  # 2 budget-widths of headroom before score hits 0
+    return max(0.0, round(100.0 * (1.0 - over / headroom), 1))
+
+data = {}
+for agent, agent_dir in agent_dirs.items():
+    files = {}
+    for fname, budget in budgets.items():
+        fpath = os.path.join(agent_dir, fname)
+        if not os.path.exists(fpath):
+            continue
+        tokens = estimate_tokens(fpath)
+        sc = round(score_file(tokens, budget), 1)
+        pct = round(tokens / budget * 100) if budget > 0 else 0
+        files[fname] = {'tokens': tokens, 'budget': budget, 'score': sc, 'pct': pct}
+    if files:
+        avg = round(sum(f['score'] for f in files.values()) / len(files), 1)
+        data[agent] = {'files': files, 'avg': avg}
+
+with open('$TMPDIR_RUN/budget_data.json', 'w') as f:
+    json.dump(data, f, indent=2)
+" 2>/dev/null
+
+# Display budget scores
+declare -A BUDGET_SCORES
+TOTAL_BUDGET_SCORE=0
+BUDGET_AGENT_COUNT=0
+
+BUDGET_DISPLAY=$($PY -c "
+import json, sys
+with open('$TMPDIR_RUN/budget_data.json') as f:
+    data = json.load(f)
+
+for agent, ad in data.items():
+    avg = ad['avg']
+    print(f'AGENT_SCORE|{agent}|{avg}')
+    for fname, fd in sorted(ad['files'].items()):
+        tokens, budget, sc, pct = fd['tokens'], fd['budget'], fd['score'], fd['pct']
+        bar_len = max(0, min(10, int(sc / 10)))
+        bar = '█' * bar_len + '░' * (10 - bar_len)
+        if sc >= 88:
+            level = 'OK'
+        elif sc >= 75:
+            level = 'INFO'
+        elif sc >= 50:
+            level = 'WARN'
+        else:
+            level = 'ERROR'
+        print(f'FILE|{agent}|{fname}|{tokens}/{budget}|{pct}%|{sc}|{bar}|{level}')
+    print(f'AVG|{agent}|{avg}')
+
+# Fleet average
+if data:
+    fleet = round(sum(a['avg'] for a in data.values()) / len(data), 1)
+    print(f'FLEET|{fleet}')
+" 2>/dev/null)
 
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
-  status=$(echo "$line" | cut -d'|' -f1)
-  ctx=$(echo "$line" | cut -d'|' -f2)
-  msg=$(echo "$line" | cut -d'|' -f3-)
-  case "$status" in
-    OK)    echo "  $(green "OK")    $ctx — $msg"; HG_PASSES=$((HG_PASSES + 1)); log "HomeGrow | OK | $ctx | $msg" ;;
-    WARN)  echo "  $(yellow "WARN")  $ctx — $msg"; HG_WARNINGS=$((HG_WARNINGS + 1)); HG_ISSUES+=("WARN|$ctx|$msg"); log "HomeGrow | WARN | $ctx | $msg" ;;
-    ERROR) echo "  $(red "ERROR") $ctx — $msg"; HG_ERRORS=$((HG_ERRORS + 1)); HG_ISSUES+=("ERROR|$ctx|$msg"); log "HomeGrow | ERROR | $ctx | $msg" ;;
+  kind=$(echo "$line" | cut -d'|' -f1)
+  case "$kind" in
+    AGENT_SCORE)
+      agent=$(echo "$line" | cut -d'|' -f2)
+      avg_sc=$(echo "$line" | cut -d'|' -f3)
+      BUDGET_SCORES[$agent]="$avg_sc"
+      TOTAL_BUDGET_SCORE=$(awk "BEGIN{printf \"%.1f\", $TOTAL_BUDGET_SCORE + $avg_sc}")
+      BUDGET_AGENT_COUNT=$((BUDGET_AGENT_COUNT + 1))
+      avg_int=$(printf "%.0f" "$avg_sc" 2>/dev/null || echo 0)
+      if [[ $avg_int -ge 90 ]]; then sc_c="$(green "$avg_sc")"
+      elif [[ $avg_int -ge 70 ]]; then sc_c="$(yellow "$avg_sc")"
+      else sc_c="$(red "$avg_sc")"; fi
+      echo "  $(bold "$agent") $sc_c/100"
+      ;;
+    FILE)
+      fname=$(echo "$line" | cut -d'|' -f3)
+      ratio=$(echo "$line" | cut -d'|' -f4)
+      pct=$(echo "$line" | cut -d'|' -f5)
+      sc=$(echo "$line" | cut -d'|' -f6)
+      bar=$(echo "$line" | cut -d'|' -f7)
+      level=$(echo "$line" | cut -d'|' -f8)
+      sc_int=$(printf "%.0f" "$sc" 2>/dev/null || echo 0)
+      if [[ $sc_int -ge 90 ]]; then sc_d="$(green "$sc")"
+      elif [[ $sc_int -ge 50 ]]; then sc_d="$(yellow "$sc")"
+      else sc_d="$(red "$sc")"; fi
+      tag=""
+      [[ "$level" == "ERROR" ]] && tag=" $(red "▲")"
+      [[ "$level" == "WARN" ]] && tag=" $(yellow "▲")"
+      [[ "$level" == "INFO" ]] && tag=" $(cyan "~")"
+      printf "    %-15s %8s  %6s  %s%s\n" "$fname" "$ratio" "$sc_d" "$bar" "$tag"
+      ;;
+    AVG)
+      echo ""
+      ;;
+    FLEET)
+      fleet_avg=$(echo "$line" | cut -d'|' -f2)
+      echo "  $(bold "Fleet average:") $(score_color "$fleet_avg")/100"
+      log "Token Budgets | fleet_avg=$fleet_avg"
+      ;;
   esac
-done < "$HG_DIR/results.txt"
-
-echo ""
-echo "  $(bold "Summary:") $(green "$HG_PASSES pass") | $(yellow "$HG_WARNINGS warn") | $(red "$HG_ERRORS error")"
+done <<< "$BUDGET_DISPLAY"
 echo ""
 echo ""
 
@@ -463,7 +725,7 @@ if [[ "$HARDENER_AVAILABLE" == "true" ]]; then
 
   TOTAL_CHARS=0
   for agent in "${AGENTS[@]}"; do
-    agent_dir="$AGENTS_DIR/$agent"
+    agent_dir="${AGENT_DIRS[$agent]}"
     [[ ! -d "$agent_dir" ]] && continue
     for mdfile in "$agent_dir"/*.md; do
       [[ -f "$mdfile" ]] || continue
@@ -516,7 +778,7 @@ print(f'PRICE_OUT={p[\"o\"]}')
     PH_ACTUAL_OUT=0
 
     for agent in "${AGENTS[@]}"; do
-      agent_dir="$AGENTS_DIR/$agent"
+      agent_dir="${AGENT_DIRS[$agent]}"
       [[ ! -d "$agent_dir" ]] && continue
 
       tmpraw="$TMPDIR_RUN/ph-raw-$agent-$$.md"
@@ -538,13 +800,14 @@ with open('$tmpfile', 'w') as f: json.dump(data, f, indent=2)
 
       if [[ -f "$tmpfile" ]]; then
         echo "  $(bold "$agent") — evaluating..."
+        PH_STDERR="$TMPDIR_RUN/ph-stderr-${agent}.txt"
         "$HARDENER_BIN" evaluate \
           --input-mode chat --input-format openai \
           --target-prompt-path "$tmpfile" \
           --eval-api-mode "$HARDENER_API_MODE" --eval-model "$HARDENER_MODEL" \
           --output-path "$PH_DIR/${agent}_eval.json" \
           --report-dir "$PH_DIR" \
-          > /dev/null 2>&1 || true
+          > /dev/null 2>"$PH_STDERR" || true
 
         if [[ -f "$PH_DIR/${agent}_eval.json" ]]; then
           # Extract actual API token usage from eval result
@@ -563,7 +826,13 @@ print(f\"{u.get('input_tokens',0)} {u.get('output_tokens',0)}\")
           PH_COUNT=$((PH_COUNT + 1))
         else
           echo "    $(yellow "No eval output")"
-          log "Hardener | $agent | no json"
+          if [[ -s "$PH_STDERR" ]]; then
+            _ph_err=$(tail -3 "$PH_STDERR" | head -1)
+            echo "    $(dim "reason: $_ph_err")"
+            log "Hardener | $agent | no json | stderr: $_ph_err"
+          else
+            log "Hardener | $agent | no json | no stderr"
+          fi
         fi
         command rm -f "$tmpfile"
       fi
@@ -590,7 +859,7 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Combined Summary — 4-pillar scoring
+# Combined Summary — 5-pillar scoring
 # ═══════════════════════════════════════════════════════════════════════════════
 
 HARDENER_RAN=false
@@ -615,7 +884,9 @@ with open('$TMPDIR_RUN/scoring_input.json', 'w') as _f:
         'total_pl_security': $TOTAL_PL_SECURITY,
         'total_pl_cost': $TOTAL_PL_COST,
         'total_pl_files': $TOTAL_PL_FILES,
+        'total_pl_failures': $TOTAL_PL_FAILURES,
         'hg_passes': $HG_PASSES,
+        'hg_infos': $HG_INFOS,
         'hg_warnings': $HG_WARNINGS,
         'hg_errors': $HG_ERRORS,
         'hardener_ran': '$HARDENER_RAN' == 'true',
@@ -624,6 +895,8 @@ with open('$TMPDIR_RUN/scoring_input.json', 'w') as _f:
         'weight_quality': $WEIGHT_QUALITY,
         'weight_consistency': $WEIGHT_CONSISTENCY,
         'weight_security': $WEIGHT_SECURITY,
+        'weight_budget': $WEIGHT_BUDGET,
+        'budget_data_path': '$TMPDIR_RUN/budget_data.json',
         'pass_threshold': $PASS_THRESHOLD,
         'blocking_errors': '$BLOCKING_ERRORS' == 'true',
         'grades': [($GRADE_S,'S'),($GRADE_A_PLUS,'A+'),($GRADE_A,'A'),($GRADE_A_MINUS,'A-'),
@@ -632,8 +905,9 @@ with open('$TMPDIR_RUN/scoring_input.json', 'w') as _f:
     }, _f)
 " 2>/dev/null
 SCORING=$($PY "$SCRIPT_DIR/lib/scoring.py" --input "$TMPDIR_RUN/scoring_input.json" 2>/dev/null)
-  PILLAR_STRUCTURE=0 PILLAR_QUALITY=0 PILLAR_CONSISTENCY=0 PILLAR_SECURITY=N/A
+  PILLAR_STRUCTURE=0 PILLAR_QUALITY=N/A PILLAR_CONSISTENCY=0 PILLAR_SECURITY=N/A PILLAR_BUDGET=N/A
   PH_SATISFIED=0 PH_TOTAL=0 AVG_PL_CLARITY=0 AVG_PL_SECURITY=0 AVG_PL_COST=0
+  BUDGET_TOTAL_TOKENS=0 BUDGET_TOTAL_BUDGET=0
   COMBINED=0 GRADE=F PASSED=false HAS_BLOCKING=false
   while IFS= read -r line; do
     [[ -z "$line" || "$line" != *"="* ]] && continue
@@ -642,14 +916,6 @@ SCORING=$($PY "$SCRIPT_DIR/lib/scoring.py" --input "$TMPDIR_RUN/scoring_input.js
   done <<< "$SCORING"
 
 # ─── Display ──────────────────────────────────────────────────────────────────
-
-score_color() {
-  local s
-  s=$(printf "%.0f" "$1" 2>/dev/null || echo 0)
-  if [[ $s -ge 90 ]]; then green "$1"
-  elif [[ $s -ge 70 ]]; then yellow "$1"
-  else red "$1"; fi
-}
 
 grade_str() { echo "$(score_color "$1") ($2)"; }
 
@@ -667,52 +933,75 @@ if [[ $AGENT_COUNT -gt 0 ]]; then
   fi
   echo ""
 
-  read -r eff_st eff_ql eff_co eff_se <<< "$($PY -c "
+  read -r eff_st eff_ql eff_co eff_se eff_bu <<< "$($PY -c "
+ql=$WEIGHT_QUALITY if '$PILLAR_QUALITY'!='N/A' else 0
 se=$WEIGHT_SECURITY if '$PILLAR_SECURITY'!='N/A' else 0
-tw=$WEIGHT_STRUCTURE+$WEIGHT_QUALITY+$WEIGHT_CONSISTENCY+se
-print(round($WEIGHT_STRUCTURE/tw*100), round($WEIGHT_QUALITY/tw*100), round($WEIGHT_CONSISTENCY/tw*100), round(se/tw*100) if se else '—')
+bu=$WEIGHT_BUDGET if '$PILLAR_BUDGET'!='N/A' else 0
+tw=$WEIGHT_STRUCTURE+ql+$WEIGHT_CONSISTENCY+se+bu
+print(round($WEIGHT_STRUCTURE/tw*100), round(ql/tw*100) if ql else '—', round($WEIGHT_CONSISTENCY/tw*100), round(se/tw*100) if se else '—', round(bu/tw*100) if bu else '—')
 " 2>/dev/null)"
 
   printf "  %-24s  %-8s  %s\n" "Pillar" "Score" "Weight"
   printf "  %-24s  %-8s  %s\n" "────────────────────" "──────" "──────"
   printf "  %-24s  %-8s  %s\n" "Structure (AgentLinter)" "$(score_color "$PILLAR_STRUCTURE")" "${eff_st}%"
-  printf "  %-24s  %-8s  %s\n" "Quality (PromptLint)" "$(score_color "$PILLAR_QUALITY")" "${eff_ql}%"
+  if [[ "$PILLAR_QUALITY" != "N/A" ]]; then
+    printf "  %-24s  %-8s  %s\n" "Quality (PromptLint)" "$(score_color "$PILLAR_QUALITY")" "${eff_ql}%"
+  else
+    printf "  %-24s  %-8s  %s\n" "Quality (PromptLint)" "$(dim "skipped")" "—"
+  fi
   printf "  %-24s  %-8s  %s\n" "Consistency (Home-Grow)" "$(score_color "$PILLAR_CONSISTENCY")" "${eff_co}%"
   if [[ "$PILLAR_SECURITY" != "N/A" ]]; then
     printf "  %-24s  %-8s  %s\n" "Security (Hardener)" "$(score_color "$PILLAR_SECURITY")" "${eff_se}%"
   else
     printf "  %-24s  %-8s  %s\n" "Security (Hardener)" "$(dim "skipped")" "—"
   fi
+  if [[ "$PILLAR_BUDGET" != "N/A" ]]; then
+    printf "  %-24s  %-8s  %s\n" "Token Budget (Length)" "$(score_color "$PILLAR_BUDGET")" "${eff_bu}%"
+  else
+    printf "  %-24s  %-8s  %s\n" "Token Budget (Length)" "$(dim "N/A")" "—"
+  fi
   echo ""
 
-  dim "  Quality breakdown: clarity $AVG_PL_CLARITY  security $AVG_PL_SECURITY  cost $AVG_PL_COST (each /10)"
+  dim "  Quality = clarity $AVG_PL_CLARITY/10 (avg across ${TOTAL_PL_FILES} files)"
   echo ""
-  dim "  Consistency: $HG_PASSES pass / $HG_WARNINGS warn / $HG_ERRORS err (OK=1.0 WARN=0.5 ERR=0.0)"
+  dim "  Consistency = $HG_PASSES pass / $HG_INFOS info / $HG_WARNINGS warn / $HG_ERRORS err"
   echo ""
   if [[ "$PILLAR_SECURITY" != "N/A" ]]; then
-    dim "  Security: avg $($PY -c "print(round($PH_SATISFIED/$PH_TOTAL,1) if $PH_TOTAL>0 else 0)" 2>/dev/null)/10 across $PH_TOTAL checks"
+    dim "  Security = avg $($PY -c "print(round($PH_SATISFIED/$PH_TOTAL,1) if $PH_TOTAL>0 else 0)" 2>/dev/null)/10 across $PH_TOTAL checks"
+    echo ""
+  fi
+  if [[ "$PILLAR_BUDGET" != "N/A" && "$BUDGET_TOTAL_BUDGET" -gt 0 ]]; then
+    budget_usage_pct=$($PY -c "print(round($BUDGET_TOTAL_TOKENS/$BUDGET_TOTAL_BUDGET*100,1))" 2>/dev/null)
+    dim "  Token Budget = ${BUDGET_TOTAL_TOKENS}/${BUDGET_TOTAL_BUDGET} tokens (${budget_usage_pct}% of capacity)"
     echo ""
   fi
 
-  printf "\n  %-14s  %-12s  %-10s  %-10s  %-8s\n" "Agent" "Structure" "Clarity" "Security" "Cost"
-  printf "  %-14s  %-12s  %-10s  %-10s  %-8s\n" "──────────" "─────────" "────────" "────────" "──────"
-  for agent in "${AGENTS[@]}"; do
-    al_s="${AL_SCORES[$agent]:-N/A}"
-    pl_d="${PL_SCORES[$agent]:-N/A N/A N/A}"
-    pl_c=$(echo "$pl_d" | awk '{print $1}')
-    pl_s=$(echo "$pl_d" | awk '{print $2}')
-    pl_co=$(echo "$pl_d" | awk '{print $3}')
-    printf "  %-14s  %-12s  %-10s  %-10s  %-8s\n" "$agent" "$al_s" "$pl_c" "$pl_s" "$pl_co"
-  done
-  echo ""
+  # Per-agent breakdown table — only shown for multi-agent (2+) runs
+  if [[ ${#AGENTS[@]} -gt 1 ]]; then
+    printf "\n  %-16s  %-10s  %-10s  %-10s  %-10s  %-10s\n" "Agent" "Struct." "Quality" "Consist." "Security" "Budget"
+    printf "  %-16s  %-10s  %-10s  %-10s  %-10s  %-10s\n" "────────────" "────────" "────────" "────────" "────────" "────────"
+    for agent in "${AGENTS[@]}"; do
+      al_s="${AL_SCORES[$agent]:-—}"
+      pl_d="${PL_SCORES[$agent]:-N/A N/A N/A}"
+      if [[ "$pl_d" != "N/A N/A N/A" ]]; then
+        pl_overall=$($PY -c "c='$pl_d'.split()[0]; print(f'{float(c)*10:.1f}')" 2>/dev/null || echo "—")
+      else
+        pl_overall="—"
+      fi
+      bu_s="${BUDGET_SCORES[$agent]:-—}"
+      printf "  %-16s  %-10s  %-10s  %-10s  %-10s  %-10s\n" "$agent" "$al_s" "$pl_overall" "—" "—" "$bu_s"
+    done
+    echo ""
+  fi
 
   log_section "Combined Results"
   log "Run ID: $RUN_ID"
   log "Git: $GIT_COMMIT ($GIT_BRANCH) dirty=$GIT_DIRTY"
   log "Score: $COMBINED ($GRADE) — $([ "$PASSED" = "true" ] && echo "PASS" || echo "FAIL")"
-  log "Pillars: structure=$PILLAR_STRUCTURE quality=$PILLAR_QUALITY consistency=$PILLAR_CONSISTENCY security=$PILLAR_SECURITY"
-  log "Weights: st=$WEIGHT_STRUCTURE ql=$WEIGHT_QUALITY co=$WEIGHT_CONSISTENCY se=$WEIGHT_SECURITY"
-  log "HomeGrow: $HG_PASSES/$HG_WARNINGS/$HG_ERRORS"
+  log "Pillars: structure=$PILLAR_STRUCTURE quality=$PILLAR_QUALITY consistency=$PILLAR_CONSISTENCY security=$PILLAR_SECURITY budget=$PILLAR_BUDGET"
+  log "Weights: st=$WEIGHT_STRUCTURE ql=$WEIGHT_QUALITY co=$WEIGHT_CONSISTENCY se=$WEIGHT_SECURITY bu=$WEIGHT_BUDGET"
+  log "HomeGrow: $HG_PASSES pass / $HG_INFOS info / $HG_WARNINGS warn / $HG_ERRORS err"
+  log "Token Budget: $BUDGET_TOTAL_TOKENS / $BUDGET_TOTAL_BUDGET total"
   log "Threshold: $PASS_THRESHOLD  blocking=$BLOCKING_ERRORS"
 fi
 
@@ -751,17 +1040,22 @@ with open('$TMPDIR_RUN/report_input.json', 'w') as _f:
         'pass_threshold': $PASS_THRESHOLD,
         'blocking_errors': '$BLOCKING_ERRORS' == 'true',
         'pillar_structure': float('$PILLAR_STRUCTURE'),
-        'pillar_quality': float('$PILLAR_QUALITY'),
+        'pillar_quality': float('$PILLAR_QUALITY') if '$PILLAR_QUALITY' != 'N/A' else None,
         'pillar_consistency': float('$PILLAR_CONSISTENCY'),
-        'pillar_security': '$PILLAR_SECURITY',
+        'pillar_security': float('$PILLAR_SECURITY') if '$PILLAR_SECURITY' != 'N/A' else None,
+        'pillar_budget': float('$PILLAR_BUDGET') if '$PILLAR_BUDGET' != 'N/A' else None,
         'weight_structure': $WEIGHT_STRUCTURE,
         'weight_quality': $WEIGHT_QUALITY,
         'weight_consistency': $WEIGHT_CONSISTENCY,
         'weight_security': $WEIGHT_SECURITY,
+        'weight_budget': $WEIGHT_BUDGET,
+        'budget_total_tokens': $BUDGET_TOTAL_TOKENS,
+        'budget_total_budget': $BUDGET_TOTAL_BUDGET,
         'avg_pl_clarity': float('$AVG_PL_CLARITY'),
         'avg_pl_security': float('$AVG_PL_SECURITY'),
         'avg_pl_cost': float('$AVG_PL_COST'),
         'hg_passes': $HG_PASSES,
+        'hg_infos': $HG_INFOS,
         'hg_warnings': $HG_WARNINGS,
         'hg_errors': $HG_ERRORS,
         'al_dir': '$AL_DIR',

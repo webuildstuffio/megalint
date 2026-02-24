@@ -5,8 +5,8 @@
 setup() {
   SCRIPT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-  AGENTS_DIR="$REPO_ROOT/agents"
-  SHARED_DIR="$REPO_ROOT/_shared"
+  AGENTS_DIR="$REPO_ROOT/src/agents-refined"
+  SHARED_DIR="$REPO_ROOT/src/shared"
   MEGALINT="$SCRIPT_DIR/megalint.sh"
 }
 

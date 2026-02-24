@@ -19,6 +19,12 @@ class SecurityAnalyzer:
         (r'\bforgot\s+all\s+previous\s+instructions', 'Instruction override attempt'),
         (r'\b(execute|eval|run|compile)\s+(?!.*\b(changes|review|quality|style|standards?|linting)\b).*\bcode\b', 'Code execution risk'),
     ]
+
+    # Lines containing restriction language are defensive, not offensive
+    RESTRICTION_PATTERN = re.compile(
+        r'\b(never|don\'t|do\s+not|must\s+not|shall\s+not|prohibited|forbidden|restricted)\b',
+        re.IGNORECASE,
+    )
     
     # Medium-risk patterns (placeholder patterns removed — {var}, ${var}, <tag> are
     # normal template/markdown syntax, not injection vectors. They were causing
@@ -52,6 +58,8 @@ class SecurityAnalyzer:
         for pattern, description in cls.HIGH_RISK_PATTERNS:
             for line_num, line in enumerate(lines, 1):
                 if re.search(pattern, line, re.IGNORECASE):
+                    if cls.RESTRICTION_PATTERN.search(line):
+                        continue
                     issues.append(Issue(
                         severity='high',
                         category='security',

@@ -45,7 +45,7 @@ export const memoryRules: Rule[] = [
             file: "(workspace)",
             message:
               "No memory strategy defined. Our two-layer memory (MEMORY.md for standing facts + memory/YYYY-MM-DD.md for daily logs) is architecturally stronger than any commercial system — Claude Code uses a single directory, GPT has a simple bio tool. But the architecture only works if every agent knows about it. See docs/MASTER_SUMMARY.md #7, docs/AGI_FOCUSED_AUDIT.md §II Theme 4.",
-            fix: "Create MEMORY.md with standing facts (≤500 tokens). Add memory guidance to AGENTS.md referencing _shared/MEMORY_WORKFLOW.md. Define what to save vs skip.",
+            fix: "Create MEMORY.md with standing facts (≤500 tokens). Add memory guidance to AGENTS.md referencing shared/MEMORY_WORKFLOW.md. Define what to save vs skip.",
           },
         ];
       }

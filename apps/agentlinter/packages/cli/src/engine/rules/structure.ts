@@ -103,7 +103,7 @@ export const structureRules: Rule[] = [
               rule: this.id,
               file: file.name,
               message: `File is ${file.lines.length} lines. In OpenClaw MDS, each file loads on every message — a 500-line monolith wastes tokens and makes maintenance painful. Split into focused files that each serve one purpose.`,
-              fix: "Split per MDS convention: SOUL.md (personality ≤200 tokens), USER.md (user context ≤350), TOOLS.md (tool prefs ≤200), AGENTS.md (rules ≤800). Each file has a token budget because it loads every message.",
+              fix: "Split per MDS convention: SOUL.md (personality ≤350 tokens), USER.md (user context ≤475), TOOLS.md (tool prefs ≤350), AGENTS.md (rules ≤1150). Each file has a token budget because it loads every message.",
             });
           }
         }

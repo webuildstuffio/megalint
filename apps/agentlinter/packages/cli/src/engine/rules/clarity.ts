@@ -676,7 +676,7 @@ export const clarityRules: Rule[] = [
             file: "(workspace)",
             message:
               "No resourcefulness directive found. This is the #1 universal finding across 27+ industry prompts — every agentic company demands agents act first and ask never. Without this, agents default to base LLM behavior: asking clarifying questions instead of taking action. See docs/MASTER_SUMMARY.md #1, docs/AGI_FOCUSED_AUDIT.md §II Theme 1.",
-            fix: 'Add resourcefulness language to AGENTS.md or ensure _shared/CONVENTIONS.md contains it. Example: "Never say \'I can\'t\' without trying 3 different approaches first. Partial completion is always better than asking for clarification."',
+            fix: 'Add resourcefulness language to AGENTS.md or ensure shared/CONVENTIONS.md contains it. Example: "Never say \'I can\'t\' without trying 3 different approaches first. Partial completion is always better than asking for clarification."',
           },
         ];
       }
