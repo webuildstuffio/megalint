@@ -253,6 +253,11 @@ fi
 
 log "Agents: ${AGENTS[*]}"
 
+# Standard agent definition files — only these are linted by PromptLint and Hardener.
+# Production workspaces may contain extra .md files (research docs, reports, memory logs)
+# that are NOT agent definitions and would distort quality/security scores.
+STANDARD_MD_FILES=(AGENTS.md SOUL.md IDENTITY.md USER.md TOOLS.md HEARTBEAT.md MEMORY.md BOOT.md)
+
 echo ""
 bold "╔══════════════════════════════════════════════════════════════╗"
 echo ""
@@ -290,11 +295,9 @@ AL_PID=$!
     agent_dir="${AGENT_DIRS[$agent]}"
     [[ ! -d "$agent_dir" ]] && continue
     mkdir -p "$PL_DIR/$agent"
-    for mdfile in "$agent_dir"/*.md; do
+    for fname in "${STANDARD_MD_FILES[@]}"; do
+      mdfile="$agent_dir/$fname"
       [[ -f "$mdfile" ]] || continue
-      fname=$(basename "$mdfile")
-      # Skip BOOTSTRAP.md — ephemeral file deleted after first run, not ongoing quality signal
-      [[ "$fname" == "BOOTSTRAP.md" ]] && continue
       outfile="$PL_DIR/$agent/$fname.json"
       if ! "$PROMPTLINT_BIN" score "$mdfile" --format json > "$outfile" 2>/dev/null; then
         echo '{"_error": true, "reason": "PromptLint binary failed"}' > "$outfile"
@@ -782,9 +785,10 @@ print(f'PRICE_OUT={p[\"o\"]}')
       [[ ! -d "$agent_dir" ]] && continue
 
       tmpraw="$TMPDIR_RUN/ph-raw-$agent-$$.md"
-      for mdfile in "$agent_dir"/*.md; do
+      for _ph_fname in "${STANDARD_MD_FILES[@]}"; do
+        mdfile="$agent_dir/$_ph_fname"
         [[ -f "$mdfile" ]] || continue
-        printf '\n\n--- %s ---\n' "$(basename "$mdfile")" >> "$tmpraw"
+        printf '\n\n--- %s ---\n' "$_ph_fname" >> "$tmpraw"
         command cat "$mdfile" >> "$tmpraw"
       done
       [[ ! -s "$tmpraw" ]] && { command rm -f "$tmpraw"; continue; }

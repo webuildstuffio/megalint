@@ -211,7 +211,8 @@ def write_json(report, output_dir, run_id):
 # ── Token budget parsing from Home-Grow warnings ────────────────────────────
 
 _TOKEN_RE = re.compile(
-    r"^(.+\.md)\s+~(\d+)\s+tokens?\s+\(budget:\s*≤(\d+)\)$", re.IGNORECASE
+    r"^(.+\.md)\s+~(\d+)\s+tokens?\s+.*\(base:\s*(\d+)",
+    re.IGNORECASE,
 )
 
 
