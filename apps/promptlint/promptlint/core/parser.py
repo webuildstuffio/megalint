@@ -219,9 +219,18 @@ class PromptParser:
         for line in lines:
             lower = line.lower().strip()
             
-            # Detect example markers
-            if any(marker in lower for marker in ['example:', 'example input', 'sample:', 'input:', '>>>',  '```']):
-                in_example = True
+            # Detect example markers — also capture inline content after the marker
+            marker_found = False
+            for marker in ['example:', 'example input:', 'sample:', 'input:', '>>>']:
+                if marker in lower:
+                    in_example = True
+                    marker_found = True
+                    idx = lower.index(marker) + len(marker)
+                    remainder = line.strip()[idx:].strip()
+                    if remainder:
+                        example_lines.append(remainder)
+                    break
+            if marker_found:
                 continue
             
             # Detect end of example

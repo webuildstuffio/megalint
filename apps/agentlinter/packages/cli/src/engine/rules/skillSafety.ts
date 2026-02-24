@@ -125,8 +125,8 @@ export const skillSafetyRules: Rule[] = [
             category: "skillSafety",
             rule: this.id,
             file: file.name,
-            message: `Skill description does not explain when to use it: "${description.substring(0, 80)}"`,
-            fix: 'Add "when to use" context to description. Example: "Use when user asks for X" or "When Claude needs to Y".',
+            message: `Skill description does not explain when to use it: "${description.substring(0, 80)}". The description is the primary signal agents use to decide whether to invoke a skill — without "when to use" language, agents either never invoke the skill (can't recognize the trigger) or invoke it at the wrong time. Cursor/Claude treat description text as activation criteria.`,
+            fix: 'Add "when to use" context to description. Example: "Use when user asks for X" or "When Claude needs to Y" or "Use this to Z".',
           });
         }
       }
@@ -153,8 +153,8 @@ export const skillSafetyRules: Rule[] = [
             category: "skillSafety",
             rule: this.id,
             file: file.name,
-            message: "Skill missing YAML frontmatter (name, description, author).",
-            fix: "Add frontmatter: ---\\nname: skill-name\\ndescription: ...\\nauthor: ...\\n---",
+            message: "Skill missing YAML frontmatter (name, description, author). Frontmatter is the skill's identity document — without it, the skill cannot be matched by name, won't surface in skill discovery, and can't be attributed. Skills without metadata are also harder to audit for safety (who wrote it? what does it do?).",
+            fix: "Add frontmatter at the top: ---\\nname: skill-name\\ndescription: What this does and when to use it\\nauthor: your-name\\n---",
           });
           continue;
         }
@@ -166,8 +166,8 @@ export const skillSafetyRules: Rule[] = [
             category: "skillSafety",
             rule: this.id,
             file: file.name,
-            message: "Skill missing author field — unattributed skills are harder to trust.",
-            fix: "Add author field to frontmatter.",
+            message: "Skill missing author field — unattributed skills can't be traced back to a trusted source. In a multi-skill environment, author attribution is the first line of trust: 'Does this skill come from someone I trust, or could it be injected?'",
+            fix: "Add 'author: your-name' to frontmatter.",
           });
         }
         if (!frontmatter.includes("description")) {
@@ -176,8 +176,8 @@ export const skillSafetyRules: Rule[] = [
             category: "skillSafety",
             rule: this.id,
             file: file.name,
-            message: "Skill missing description — unclear what this skill does.",
-            fix: "Add a description field to frontmatter.",
+            message: "Skill missing description — without a description, agents cannot match this skill to user requests. The description is the primary trigger for skill invocation; a missing description means the skill is invisible to the agent's routing logic.",
+            fix: "Add 'description: What this skill does and when to use it' to frontmatter.",
           });
         }
       }
@@ -244,10 +244,10 @@ export const skillSafetyRules: Rule[] = [
                 rule: this.id,
                 file: file.name,
                 line: i + 1,
-                message: `Access to sensitive path: ${name}`,
+                message: `Sensitive path access: ${name}. Skills inherit the agent's full runtime permissions — a skill accessing ~/.ssh can read all private keys, a skill reading ~/.aws/credentials can access all AWS services. Unlike code you write yourself, skills may have been authored by unknown parties and should be treated as untrusted until reviewed.`,
                 fix: isSecurity
-                  ? "This is a security skill documenting sensitive paths. Verify context."
-                  : "Verify this path access is necessary. Skills accessing ~/.ssh, ~/.aws, or system files should be treated with extreme caution.",
+                  ? "This is a security skill documenting sensitive paths. Verify it's documentation only, not executable instructions."
+                  : `Review whether ${name} access is genuinely required. If yes, document why. If the skill was installed from an external source, do NOT install until you understand this access pattern.`,
               });
             }
           }

@@ -30,7 +30,7 @@ class SecurityAnalyzer:
     # normal template/markdown syntax, not injection vectors. They were causing
     # every MDS file to score 0 due to massive false positives.)
     MEDIUM_RISK_PATTERNS = [
-        (r'\beval\b', 'Potential code execution'),
+        (r'\beval\s*[\(\{"\']', 'Potential code execution via eval()'),
         (r'\breturn\s+internal', 'Potential information disclosure'),
         (r'\bdebug\s+mode', 'Debug mode reference'),
     ]
@@ -66,6 +66,7 @@ class SecurityAnalyzer:
                         description=f'HIGH RISK: {description}',
                         location=line_num,
                         suggestion='Remove or rephrase this instruction to prevent prompt injection',
+                        why=f'{description} in a config file creates an attack surface: pasted external content could trigger this pattern and override agent behavior. OpenClaw agents process Discord/Telegram messages that may contain injected instructions — a system prompt that itself contains override-style language weakens the agent\'s resistance to injection attacks.',
                     ))
                     score -= 3.0
         
@@ -79,6 +80,7 @@ class SecurityAnalyzer:
                         description=f'MEDIUM RISK: {description}',
                         location=line_num,
                         suggestion='Consider adding input validation or sanitization',
+                        why=f'{description} may create unintended code execution paths or information disclosure. In a private single-user system the risk is lower, but config files load into LLM context on every message — patterns here can be triggered by crafted user inputs.',
                     ))
                     score -= 0.5
         

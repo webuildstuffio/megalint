@@ -103,7 +103,7 @@ export const structureRules: Rule[] = [
               rule: this.id,
               file: file.name,
               message: `File is ${file.lines.length} lines. In OpenClaw MDS, each file loads on every message — a 500-line monolith wastes tokens and makes maintenance painful. Split into focused files that each serve one purpose.`,
-              fix: "Split per MDS convention: SOUL.md (personality ≤350 tokens), USER.md (user context ≤475), TOOLS.md (tool prefs ≤350), AGENTS.md (rules ≤1150). Each file has a token budget because it loads every message.",
+              fix: "Split per MDS convention: SOUL.md (personality ≤525 tokens), USER.md (user context ≤715), TOOLS.md (tool prefs ≤525), AGENTS.md (rules ≤1725). Each file has a token budget because it loads every message. See docs/TOKEN_BUDGET_GUIDE.md.",
             });
           }
         }
@@ -117,9 +117,10 @@ export const structureRules: Rule[] = [
     category: "structure",
     severity: "info",
     description: "Using multiple focused files is better than one monolith",
+    applicableContexts: ["openclaw-runtime"],
     check(files) {
       const mdFiles = files.filter((f) => f.name.endsWith(".md"));
-      if (mdFiles.length === 1 && mdFiles[0].lines.length > 100) {
+      if (mdFiles.length === 1 && mdFiles[0].lines.length > 200) {
         return [
           {
             severity: "info",
@@ -127,7 +128,7 @@ export const structureRules: Rule[] = [
             rule: this.id,
             file: mdFiles[0].name,
             message:
-              "Only 1 file found with 100+ lines. Consider splitting into modular files for better organization.",
+              "Only 1 file found with 200+ lines. Consider splitting into modular files for better organization.",
             fix: "Create separate files: SOUL.md (personality), USER.md (user context), TOOLS.md (tool documentation)",
           },
         ];
@@ -187,6 +188,7 @@ export const structureRules: Rule[] = [
     category: "structure",
     severity: "info",
     description: "A file map helps agents navigate the workspace",
+    applicableContexts: ["claude-code"],
     check(files) {
       const mainFile = files.find(
         (f) => f.name === "CLAUDE.md" || f.name === "AGENTS.md"
@@ -230,6 +232,7 @@ export const structureRules: Rule[] = [
     category: "structure",
     severity: "info",
     description: "Files should indicate when they were last updated",
+    applicableContexts: ["claude-code"],
     check(files) {
       const diagnostics: Diagnostic[] = [];
       const coreFiles = files.filter(

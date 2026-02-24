@@ -107,8 +107,12 @@ class MarkdownReporter:
     def _format_issue(issue: Issue) -> str:
         """Format a single issue for Markdown."""
         location_str = f" (line {issue.location})" if issue.location else ""
-        return (
-            f"- **{issue.description}**{location_str}\n"
-            f"  - Category: `{issue.category}`\n"
-            f"  - Suggestion: {issue.suggestion}\n"
-        )
+        lines = [
+            f"- **{issue.description}**{location_str}",
+            f"  - Category: `{issue.category}`",
+            f"  - Suggestion: {issue.suggestion}",
+        ]
+        if issue.why:
+            lines.append(f"  - Why: {issue.why}")
+        lines.append("")
+        return "\n".join(lines)

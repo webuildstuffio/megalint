@@ -6,7 +6,7 @@ Pillars:
   2. Quality      (PromptLint)      — 0-100, converted from PromptLint's per-file 0-10 scores
   3. Consistency  (Home-Grow)       — 0-100, weighted pass rate across convention checks
   4. Security     (Prompt Hardener) — 0-100, weighted satisfaction across LLM-judged techniques
-  5. Token Budget (per-file length) — 0-100, linear scoring: 100 at budget → 0 at 3× budget
+  5. Token Budget (per-file length) — 0-100, linear scoring: 100 at budget → 0 at 5× budget
 
 All pillars output on the same 0-100 scale with 1-decimal precision.
 Combined score = weighted average of active pillars (skipped pillars redistribute weight).
@@ -101,9 +101,9 @@ def main():
                     is_rse = cat_name in RSE_CATEGORY_NAMES
                     for check_val in cat_val.values():
                         if isinstance(check_val, dict) and "satisfaction" in check_val:
+                            if is_rse:
+                                continue  # Always exclude RSE — OpenClaw doesn't use delimited user input
                             sat = int(check_val["satisfaction"])
-                            if is_rse and sat == 0:
-                                continue
                             ph_total += 1
                             ph_satisfied += sat
             except (json.JSONDecodeError, OSError, ValueError):
@@ -112,7 +112,7 @@ def main():
             pillar_security = round((ph_satisfied / (ph_total * 10)) * 100, 1)
 
     # Pillar 5: Token Budget — per-file length scoring
-    # Scores each file: 100 at/under budget, 0 at 3× budget, linear between
+    # Scores each file: 100 at/under budget, 0 at 5× budget, linear between
     # Per-agent: average of file scores. Fleet: average of agent averages.
     pillar_budget = None
     budget_data_path = m.get("budget_data_path", "")
@@ -130,14 +130,17 @@ def main():
                     files = agent_data.get("files", {})
                     if not files:
                         continue
-                    file_scores = []
+                    weighted_sum = 0.0
+                    total_w = 0
                     for fname, fd in files.items():
-                        file_scores.append(fd["score"])
+                        w = fd.get("weight", 1)
+                        weighted_sum += fd["score"] * w
+                        total_w += w
                         budget_total_tokens += fd["tokens"]
                         budget_total_budget += fd["budget"]
                         key = f"{agent_name}/{fname}"
                         budget_per_file[key] = fd["score"]
-                    agent_avg = sum(file_scores) / len(file_scores)
+                    agent_avg = weighted_sum / total_w if total_w > 0 else 0.0
                     budget_per_agent[agent_name] = round(agent_avg, 1)
                     agent_avgs.append(agent_avg)
                 if agent_avgs:

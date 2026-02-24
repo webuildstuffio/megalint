@@ -70,6 +70,7 @@ class Issue(BaseModel):
     description: str
     location: Optional[int] = None  # line number
     suggestion: str
+    why: Optional[str] = None  # OpenClaw-specific reasoning for why this matters
 
 
 class CostEstimate(BaseModel):

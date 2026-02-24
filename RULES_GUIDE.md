@@ -20,36 +20,54 @@ See `README.md` for quick start and usage. This doc covers internals, rule inven
 |------|----------|-------------|:--------:|:--------------------------:|
 | **AgentLinter** | TypeScript | `apps/agentlinter/packages/cli/src/engine/rules/*.ts` | Yes (`bun run build`) | No (some context-gated via `applicableContexts`) |
 | **PromptLint** | Python | `apps/promptlint/promptlint/analyzers/*.py` | No | No |
-| **Home-Grow** | Bash | `apps/homegrow/run.sh` (16 checks as functions) + `apps/homegrow/rules.conf` | No | Yes (`CHECK_*=0` in `rules.conf`) |
+| **Home-Grow** | Bash | `apps/homegrow/run.sh` (20 checks as functions) + `apps/homegrow/rules.conf` | No | Yes (`CHECK_*=0` in `rules.conf`) |
 | **Prompt Hardener** | Python | `apps/prompt-hardener/src/prompt_hardener/evaluate.py` | No | Yes (`apply_techniques` list) |
 
 ---
 
 ## Check Inventory
 
-### AgentLinter — 72 rules, 9 categories
+### AgentLinter — 86 rules, 9 categories
 
 Each category = one `.ts` file exporting a `Rule[]` array. All merged in `index.ts` → `allRules`. Types and category weights defined in `types.ts`.
 
 | Category | File | Count | Severities (rule-level) |
 |----------|------|:-----:|-------------------------|
 | Structure | `structure.ts` | 8 | 1 critical, 3 warning, 4 info |
-| Clarity | `clarity.ts` | 14 | 2 error, 6 warning, 6 info |
-| Completeness | `completeness.ts` | 9 | 4 warning, 5 info |
+| Clarity | `clarity.ts` | 17 | 2 error, 7 warning, 8 info |
+| Completeness | `completeness.ts` | 15 | 4 warning, 11 info |
 | Security | `security.ts` | 5 | 1 critical, 3 warning, 1 info |
-| Consistency | `consistency.ts` | 11 | 3 error, 6 warning, 2 info |
-| Memory | `memory.ts` | 7 | 2 warning, 5 info |
+| Consistency | `consistency.ts` | 14 | 4 error, 8 warning, 2 info |
+| Memory | `memory.ts` | 9 | 4 warning, 5 info |
 | Runtime | `runtime.ts` | 7 | 2 error, 4 warning, 1 info |
 | Skill Safety | `skillSafety.ts` | 8 | 4 error, 4 warning |
 | Remote-Ready | `remoteReady.ts` | 3 | 2 warning, 1 info |
-| **Total** | | **72** | **2 critical, 11 error, 34 warning, 25 info** |
+| **Total** | | **86** | **2 critical, 12 error, 39 warning, 33 info** |
 
-Category scoring weights (from `types.ts`): clarity 20%, structure 10%, completeness 13%, security 14%, consistency 11%, memory 13%, runtime 6%, skill safety 8%, remote-ready 5%.
+Category scoring weights (from `types.ts`): clarity 20%, security 14%, completeness 13%, memory 13%, consistency 11%, structure 10%, skill safety 8%, runtime 6%, remote-ready 5%.
 
 <details>
-<summary>Full rule ID list</summary>
+<summary>Full rule ID list (86 rules)</summary>
 
-`structure/has-main-file` `structure/has-sections` `structure/heading-hierarchy` `structure/file-size` `structure/modular-files` `structure/no-empty-sections` `structure/has-file-map` `structure/has-version-or-update-date` · `clarity/no-vague-instructions` `clarity/actionable-instructions` `clarity/has-examples` `clarity/no-contradictions` `clarity/instruction-density` `clarity/naked-conditional` `clarity/compound-instruction` `clarity/escape-hatch-missing` `clarity/ambiguous-pronoun` `clarity/action-without-context` `clarity/sentence-complexity` `clarity/priority-signal-missing` `clarity/undefined-term` `clarity/english-config-files` · `completeness/has-identity` `completeness/has-tools` `completeness/has-boundaries` `completeness/has-user-context` `completeness/has-error-handling` `completeness/has-output-format` `completeness/has-workflow` `completeness/has-priorities` `completeness/verification-criteria-required` · `security/no-secrets` `security/has-injection-defense` `security/has-permission-boundaries` `security/no-pii-exposure` `security/env-var-references` · `consistency/referenced-files-exist` `consistency/naming-convention` `consistency/no-duplicate-instructions` `consistency/identity-alignment` `consistency/permission-conflict` `consistency/tone-voice-alignment` `consistency/language-mixing` `consistency/circular-dependency` `consistency/timezone-locale-drift` `consistency/priority-conflict` `consistency/outdated-cross-references` · `memory/has-memory-strategy` `memory/has-handoff-protocol` `memory/has-file-based-notes` `memory/no-mental-notes` `memory/has-context-window-awareness` `memory/has-state-tracking` `memory/has-learning-loop` · `runtime/config-exists` `runtime/gateway-bind` `runtime/auth-mode` `runtime/token-strength` `runtime/dm-policy` `runtime/group-policy` `runtime/config-secrets` · `skill-safety/skill-name-match-dir` `skill-safety/skill-description-when-to-use` `skill-safety/has-metadata` `skill-safety/dangerous-commands` `skill-safety/sensitive-paths` `skill-safety/data-exfiltration` `skill-safety/excessive-permissions` `skill-safety/injection-vectors` · `remote-ready/workspace-path-specified` `remote-ready/env-vars-documented` `remote-ready/model-settings-specified`
+**Structure (8):** `structure/has-main-file` `structure/has-sections` `structure/heading-hierarchy` `structure/file-size` `structure/modular-files` `structure/no-empty-sections` `structure/has-file-map` `structure/has-version-or-update-date`
+
+**Clarity (17):** `clarity/no-vague-instructions` `clarity/actionable-instructions` `clarity/has-examples` `clarity/no-contradictions` `clarity/instruction-density` `clarity/naked-conditional` `clarity/compound-instruction` `clarity/escape-hatch-missing` `clarity/ambiguous-pronoun` `clarity/sentence-complexity` `clarity/priority-signal-missing` `clarity/undefined-term` `clarity/english-config-files` `clarity/has-resourcefulness-directive` `clarity/no-meta-commentary` `clarity/no-sycophantic-phrases` `clarity/no-persona-self-reference`
+
+**Completeness (15):** `completeness/has-identity` `completeness/has-tools` `completeness/has-boundaries` `completeness/has-user-context` `completeness/has-error-awareness` `completeness/has-output-format` `completeness/has-workflow` `completeness/verification-criteria-required` `completeness/has-autonomy-tiers` `completeness/has-correction-protocol` `completeness/has-completion-definition` `completeness/has-verbosity-guidance` `completeness/has-personality-output-separation` `completeness/has-question-vs-task-routing` `completeness/has-error-recovery`
+
+**Security (5):** `security/no-secrets` `security/has-injection-defense` `security/has-permission-boundaries` `security/no-pii-exposure` `security/env-var-references`
+
+**Consistency (14):** `consistency/referenced-files-exist` `consistency/naming-convention` `consistency/no-duplicate-instructions` `consistency/identity-alignment` `consistency/permission-conflict` `consistency/tone-voice-alignment` `consistency/language-mixing` `consistency/circular-dependency` `consistency/timezone-locale-drift` `consistency/priority-conflict` `consistency/outdated-cross-references` `consistency/action-tiers-present` `consistency/shared-conventions-referenced` `consistency/soul-tone-calibrated`
+
+**Memory (9):** `memory/has-memory-strategy` `memory/has-handoff-protocol` `memory/has-file-based-notes` `memory/no-mental-notes` `memory/has-context-window-awareness` `memory/has-state-tracking` `memory/has-learning-loop` `memory/no-database-phrasing` `memory/has-surfacing-rules`
+
+**Runtime (7):** `runtime/config-exists` `runtime/gateway-bind` `runtime/auth-mode` `runtime/token-strength` `runtime/dm-policy` `runtime/group-policy` `runtime/config-secrets`
+
+**Skill Safety (8):** `skill-safety/skill-name-match-dir` `skill-safety/skill-description-when-to-use` `skill-safety/has-metadata` `skill-safety/dangerous-commands` `skill-safety/sensitive-paths` `skill-safety/data-exfiltration` `skill-safety/excessive-permissions` `skill-safety/injection-vectors`
+
+**Remote-Ready (3):** `remote-ready/workspace-path-specified` `remote-ready/env-vars-documented` `remote-ready/model-settings-specified`
+
+**Removed rules:** `clarity/action-without-context` (dead code — never fired on MDS agents), `completeness/has-priorities` (duplicate of `clarity/priority-signal-missing`)
 
 </details>
 
@@ -59,54 +77,70 @@ Each analyzer = Python class in `apps/promptlint/promptlint/analyzers/`. Returns
 
 | Analyzer | File | What It Checks |
 |----------|------|----------------|
-| Clarity | `clarity.py` | Structure presence, examples, output format, step-by-step refs, ambiguous phrases (14 patterns), vague quantities (6 patterns), conflict pairs (4), variable usage |
-| Security | `security.py` | Injection patterns: 6 high-risk (-3.0 each), 7 medium-risk (-1.5 each), unguarded variables (-1.0 each) |
-| Cost | `cost.py` | Token count vs thresholds (500/1K/2K/4K), variable count, instruction count |
+| Clarity | `clarity.py` | Structure presence, examples, output format, step-by-step refs, ambiguous phrases (14 patterns), vague quantities (6 patterns), conflict pairs (16 pairs), variable usage. Relaxed checks for narrative files (USER.md, MEMORY.md, BOOT.md) and identity files (IDENTITY.md, SOUL.md) |
+| Security | `security.py` | Injection patterns: 6 high-risk (-3.0 each), 3 medium-risk (-0.5 each). Skips lines with restriction language (defensive instructions). Removed: placeholder/template variable FPs, dead low-risk patterns |
+| Cost | `cost.py` | Token count vs TOKEN_BUDGET_GUIDE.md thresholds: reasonable (1725), moderate/WARN (2588), high/system-base (4865), very-high/system-WARN (7298). Variable count, instruction count |
 
-### Home-Grow — 16 checks (individually toggleable)
+### Home-Grow — 20 checks (individually toggleable)
 
 All checks live in `apps/homegrow/run.sh` as functions. Config in `apps/homegrow/rules.conf` — set any `CHECK_*=0` to disable. `megalint.sh` calls `run.sh` as a subprocess; no inlined copy.
 
 | # | Check | What It Validates | Fail = |
 |:-:|-------|-------------------|--------|
-| 1 | shared_files | 6 files exist in `shared/` | error |
-| 2 | required_files | 8 files per agent folder | error |
+| 1 | shared_files | 5 files exist in `shared/` + user dirs have `USER_CORE.md` | error |
+| 2 | required_files | 8 files per agent folder (AGENTS, SOUL, IDENTITY, USER, TOOLS, HEARTBEAT, MEMORY, BOOT) | error |
 | 3 | boot_refs | BOOT.md refs `USER_CORE.md` and `AGENT_ROSTER.md` | warn |
-| 4 | boot_structure | BOOT.md has `## Standard` section with checklist items | warn |
-| 5 | roster_count | AGENT_ROSTER.md rows match agent dir count | error |
-| 6 | bootstrap_cleanup | No stale BOOTSTRAP.md | warn |
+| 4 | boot_structure | BOOT.md has Standard/Boot/Recovery section with checklist items | warn |
+| 5 | roster_count | AGENT_ROSTER.md rows match agent dir count (subset mode = info) | error/info |
+| 6 | bootstrap_cleanup | No stale BOOTSTRAP.md in agents with memory/ dir | warn |
 | 7 | anti_sycophancy | SOUL.md opens with anti-sycophancy line (first 10 lines) | warn |
-| 8 | action_tiers | AGENTS.md has Action Tiers with **Always** + **Never** | warn |
-| 9 | tone_table | SOUL.md has tone calibration (Flat/Alive or tone section) | warn |
+| 8 | ~~action_tiers~~ | ~~AGENTS.md has Action Tiers~~ — **superseded by check 17** | — |
+| 9 | tone_table | SOUL.md has tone calibration (Flat/Alive or tone section heading) | warn |
 | 10 | continuity_line | SOUL.md has continuity line ("wake up fresh" / "files are my memory") | warn |
 | 11 | security_section | AGENTS.md has `## Security` heading or `SECURITY_RULES.md` ref | warn |
 | 12 | memory_workflow | AGENTS.md refs `MEMORY_WORKFLOW` or has `## Memory` section | warn |
 | 13 | heartbeat | HEARTBEAT.md contract has task lines if active | warn |
-| 14 | token_budgets | Per-file tiktoken count vs budget targets | warn |
-| 15 | timezone | USER.md has `\btimezone\b`, word-bounded `ET`, or `\beastern\b` | warn |
-| 16 | canonical_wording | Sensitive terms use canonical phrasing from USER_CORE.md | warn |
+| 14 | token_budgets | Per-file tiktoken count vs budget targets (2-tier: INFO/WARN) | warn (disabled by default — handled by Token Budget pillar) |
+| 15 | timezone | USER.md has timezone info (word-bounded `ET`/`CT`/`PT`/`UTC`, `eastern`, `America/`, `Asia/`, `Europe/`) | warn |
+| 16 | canonical_wording | Sensitive terms use canonical phrasing (ADHD, Discord, OpenClaw, etc.) | warn |
+| 17 | action_tiers_strict | AGENTS.md has structured action tier headings/table rows, counts 4 tiers (Always/When Asked/Ask First/Never) | error (0-1 tiers) / warn (2 tiers) |
+| 18 | conventions_resourcefulness | `shared/CONVENTIONS.md` has "figure it out" / resourcefulness directive | warn |
+| 19 | boot_conventions_ref | BOOT.md references `CONVENTIONS.md` | warn |
+| 20 | memory_surfacing | `shared/MEMORY_WORKFLOW.md` has natural surfacing guidance | warn |
+| 21 | soul_tone_calibrated | SOUL.md has calibrated tone signal (direct/warm/honest/authentic/skip filler) | warn |
 
-### Prompt Hardener — 5 techniques, 10 sub-criteria
+### Prompt Hardener — 6 default techniques, 13 sub-criteria
 
-Defined in `evaluate.py`. LLM scores each 0-10 with ❌/⚠️/✅ marks.
+Defined in `evaluate.py`. LLM scores each 0-10 with ❌/⚠️/✅ marks. Default techniques are tuned for OpenClaw (private single-user system, not a consumer chatbot).
 
-| Technique | Sub-criteria |
-|-----------|:------------:|
-| Spotlighting | 2 (tag user inputs, use spotlighting markers) |
-| Random Sequence Enclosure | 2 (random tags for system instructions, no tag leaking) |
-| Instruction Defense | 4 (inappropriate inputs, persona switching, new instructions, prompt attacks) |
-| Role Consistency | 1 (system messages don't include user input) |
-| Secrets Exclusion | 1 (no hardcoded sensitive info) |
+**Default techniques:**
+
+| Technique | Sub-criteria | What It Evaluates |
+|-----------|:------------:|-------------------|
+| Instruction Defense | 4 | Inappropriate inputs (injection, not content moderation), persona switching, new instructions, prompt attacks |
+| Role Consistency | 1 | System messages don't include user input (USER.md facts = system config, not user queries) |
+| Proactive Behavior | 2 | Resourcefulness directive (act first, ask never), anti-sycophancy (filler banning) |
+| Self-Check Quality | 2 | Error recovery protocol (retry/diagnose/try differently), verification criteria (definition of done) |
+| Task Completion | 2 | Persistence directive (keep going until resolved), no premature closure |
+| Scope Management | 2 | Action tiers define scope (Always/When Asked/Ask First/Never), autonomy calibration |
+
+**Available but not default** (removed from defaults for OpenClaw — either not applicable or duplicate):
+
+| Technique | Sub-criteria | Why Not Default |
+|-----------|:------------:|-----------------|
+| Spotlighting | 2 | OpenClaw agents receive user messages via gateway, no inline user input in system prompts |
+| Random Sequence Enclosure | 2 | OpenClaw config files don't use RSE markers, always scored 0 |
+| Secrets Exclusion | 1 | Duplicates AgentLinter `security/no-secrets` which is deterministic and more precise |
 
 ### Summary
 
 | Tool | Checks | Can Disable? |
 |------|:------:|:------------:|
-| AgentLinter | 72 | No |
+| AgentLinter | 86 | No (some context-gated via `applicableContexts`) |
 | PromptLint | ~25 sub-checks across 3 analyzers | No |
-| Home-Grow | 16 | Yes (`rules.conf`) |
-| Prompt Hardener | 10 | Yes (`apply_techniques`) |
-| **Total** | **~123** | **Home-Grow + Hardener** |
+| Home-Grow | 20 (1 superseded, 1 disabled by default) | Yes (`rules.conf`) |
+| Prompt Hardener | 13 default sub-criteria across 6 techniques (+5 optional) | Yes (`apply_techniques`) |
+| **Total** | **~144** | **Home-Grow + Hardener** |
 
 ---
 
@@ -158,8 +192,9 @@ Defined in `evaluate.py`. LLM scores each 0-10 with ❌/⚠️/✅ marks.
 1. Create `rules/myCategory.ts` — export a `Rule[]` array
 2. Edit `types.ts`:
    - Add to `Category` type union
-   - Add to `CATEGORY_WEIGHTS` (weights must conceptually sum to 1.0)
+   - Add to `CATEGORY_WEIGHTS` (weights must sum to 1.0)
    - Add to `CATEGORY_LABELS`
+   - Add to `SEVERITY_DEDUCTIONS`
 3. Edit `rules/index.ts` — import and spread into `allRules`
 4. Rebuild
 
@@ -218,11 +253,12 @@ check_mycheck() {
 2. Add your technique key to the default `apply_techniques` list:
 ```python
 apply_techniques = [
-    "spotlighting",
-    "random_sequence_enclosure",
     "instruction_defense",
     "role_consistency",
-    "secrets_exclusion",
+    "proactive_behavior",
+    "self_check",
+    "task_completion",
+    "scope_management",
     "my_new_technique",  # add here
 ]
 ```
@@ -237,7 +273,7 @@ if "my_new_technique" in apply_techniques:
         },
     }
 ```
-4. Add criteria section text and examples in the same pattern as existing techniques
+4. Add criteria section text and rubric examples in the same pattern as existing techniques
 5. Test: `./megalint.sh --yes agent-name`
 
 ---
@@ -288,7 +324,8 @@ Existing overlaps (secret detection, vague wording, contradiction checks) exist 
 | ~~Home-Grow duplication~~ | — | ✅ Fixed: all checks in `apps/homegrow/run.sh`, inline copy deleted |
 | ~~checks.sh hardcoded agent list~~ | — | ✅ Fixed: run.sh uses dynamic discovery, template excluded |
 | ~~Roster count logic differs~~ | — | ✅ Fixed: both exclude template from agent/roster count |
-| **PromptLint outputs all 0s** — latest report shows 0 for clarity/security/cost on every file | Quality pillar (25% weight) contributes nothing to score | Verify `promptlint` venv and binary are working; `megalint.sh` swallows errors via `2>/dev/null \|\| echo '{}'` |
+| ~~PromptLint outputs all 0s~~ | — | ✅ Fixed: removed FP-causing patterns (template variables, unguarded variables), relaxed checks for narrative/identity files |
+| ~~Prompt Hardener false positives~~ | — | ✅ Fixed: removed spotlighting/RSE/secrets (not applicable to OpenClaw), added OpenClaw-specific techniques (proactive behavior, self-check, task completion, scope management) with detailed rubrics |
 
 ### Functionality Improvements
 
@@ -317,15 +354,22 @@ Existing overlaps (secret detection, vague wording, contradiction checks) exist 
 | `PASS_THRESHOLD` | 70 | Minimum combined score to pass |
 | `BLOCKING_ERRORS` | true | Any Home-Grow ERROR = fail regardless of score |
 
+Grade scale: S (≥97), A+ (≥95), A (≥93), A- (≥90), B+ (≥87), B (≥83), B- (≥80), C+ (≥77), C (≥73), C- (≥70), D (≥60), F (<60).
+
 ### `apps/homegrow/rules.conf` — Check toggles + token budgets
 
 | Setting | Default | Effect |
 |---------|:-------:|--------|
 | `CHECK_*` | 1 | Enable (1) or disable (0) individual Home-Grow checks |
-| `BUDGET_AGENTS_MD` | 1150 | Token budget for AGENTS.md (tiktoken cl100k_base) |
-| `BUDGET_SOUL_MD` | 350 | Token budget for SOUL.md |
-| `BUDGET_IDENTITY_MD` | 115 | Token budget for IDENTITY.md |
-| `BUDGET_USER_MD` | 475 | Token budget for USER.md |
-| `BUDGET_TOOLS_MD` | 350 | Token budget for TOOLS.md |
-| `BUDGET_HEARTBEAT_MD` | 150 | Token budget for HEARTBEAT.md |
-| `BUDGET_MEMORY_MD` | 650 | Token budget for MEMORY.md |
+| `CHECK_TOKEN_BUDGETS` | 0 | Disabled — handled by Token Budget pillar to avoid double-counting |
+| `BUDGET_AGENTS_MD` | 1725 | Token budget for AGENTS.md (tiktoken cl100k_base) |
+| `BUDGET_SOUL_MD` | 525 | Token budget for SOUL.md |
+| `BUDGET_IDENTITY_MD` | 175 | Token budget for IDENTITY.md |
+| `BUDGET_USER_MD` | 715 | Token budget for USER.md |
+| `BUDGET_TOOLS_MD` | 525 | Token budget for TOOLS.md |
+| `BUDGET_HEARTBEAT_MD` | 225 | Token budget for HEARTBEAT.md |
+| `BUDGET_MEMORY_MD` | 975 | Token budget for MEMORY.md |
+| `TIER_INFO` | 1.25 | Budget multiplier for INFO severity (25% over base) |
+| `TIER_WARN` | 1.50 | Budget multiplier for WARN severity (50% over base) |
+
+Override priority: env vars (`MEGALINT_BUDGET_*`, `MEGALINT_TIER_*`) > `rules.conf` > defaults in `run.sh`.

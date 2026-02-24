@@ -191,6 +191,8 @@ class ConsoleReporter:
         location_str = f" (line {issue.location})" if issue.location else ""
         self.console.print(f"  [{color}]•[/{color}] {issue.description}{location_str}")
         self.console.print(f"    [dim]→ {issue.suggestion}[/dim]")
+        if issue.why:
+            self.console.print(f"    [dim italic]Why: {issue.why}[/dim italic]")
     
     def _print_suggestions(self, suggestions: List[str]):
         """Print improvement suggestions."""

@@ -143,10 +143,10 @@ export const completenessRules: Rule[] = [
   },
 
   {
-    id: "completeness/has-error-handling",
+    id: "completeness/has-error-awareness",
     category: "completeness",
     severity: "info",
-    description: "Agent should know how to handle errors and edge cases",
+    description: "Agent should have error awareness — mentions of errors, failures, edge cases (see also has-error-recovery for actual recovery protocol)",
     check(files) {
       const allContent = files.map((f) => f.content).join("\n");
       const hasErrorHandling =

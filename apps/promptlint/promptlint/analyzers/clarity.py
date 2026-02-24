@@ -17,7 +17,6 @@ class ClarityAnalyzer:
         'has_examples': 1.0,
         'has_output_format': 1.5,
         'step_by_step': 1.0,
-        'specific_terms': 0.5,
         'ambiguous_phrases': -0.5,
         'conflicting_instructions': -1.0,
         'vague_quantities': -0.75,
@@ -47,7 +46,8 @@ class ClarityAnalyzer:
                 severity='high',
                 category='clarity',
                 description='No clear instructions detected',
-                suggestion='Add explicit imperative instructions (start with action verbs)',
+                suggestion='Add explicit imperative instructions (start with action verbs like "Always", "Never", "Use", "Respond")',
+                why='Agents without explicit instructions fall back to base LLM behavior — polite, verbose, and permission-seeking. OpenClaw agents should act first and ask never. Every instruction is a behavioral directive that overrides the default.',
             ))
         
         # Check for examples (don't penalize identity/narrative files for lacking them)
@@ -92,6 +92,7 @@ class ClarityAnalyzer:
                     description=f'Vague quantity: "{phrase}"',
                     location=line_num,
                     suggestion=suggestion,
+                    why=f'Vague quantities ("{phrase}") force the model to estimate thresholds that should be explicit. Two runs with the same prompt may interpret "many" as 5 or 50, causing wildly inconsistent behavior at boundary conditions.',
                 ))
                 score += vague_penalty
         
@@ -103,7 +104,8 @@ class ClarityAnalyzer:
                     severity='high',
                     category='clarity',
                     description=conflict_desc,
-                    suggestion='Review instructions for contradictions',
+                    suggestion='Review instructions for contradictions — scope one instruction to specific contexts ("be brief in DMs, thorough in reports") to eliminate the conflict.',
+                    why='Contradictory instructions make agent behavior unpredictable. The model picks whichever instruction its attention weights higher — essentially a coin flip. Every contradicted instruction reduces effective instruction count.',
                 ))
                 score += cls.WEIGHTS['conflicting_instructions']
         
@@ -140,6 +142,7 @@ class ClarityAnalyzer:
                         description=f'Ambiguous phrase: "{phrase}"',
                         location=line_num,
                         suggestion=suggestion,
+                        why=f'Ambiguous phrases delegate judgment to the model without criteria. "{phrase}" means something different to every model run — it will interpret it inconsistently across sessions. Every well-crafted industry prompt (Claude, GPT-5, Gemini) uses concrete thresholds instead.',
                     ))
         
         return issues
@@ -200,6 +203,21 @@ class ClarityAnalyzer:
         conflict_pairs = [
             (('be brief', 'be detailed'), 'Cannot be both brief and detailed'),
             (('be concise', 'elaborate on everything'), 'Cannot be both concise and elaborate on everything'),
+            (('never ask', 'always ask'), 'Cannot both never ask and always ask for clarification'),
+            (('respond in english', 'respond in korean'), 'Cannot respond in both English and Korean'),
+            (('respond in english', 'always use korean'), 'Cannot respond in both English and Korean'),
+            (('always use markdown', 'never use markdown'), 'Cannot both always and never use markdown'),
+            (('always use bullet', 'never use bullet'), 'Cannot both always and never use bullets'),
+            (('be informal', 'be formal'), 'Cannot be both formal and informal'),
+            (('be casual', 'be professional'), 'Cannot be both casual and professional in the same context'),
+            (('be formal', 'be casual'), 'Cannot be both formal and casual'),
+            (('be direct', 'be diplomatic'), 'Cannot be both direct and diplomatic without scoping'),
+            (('be verbose', 'be concise'), 'Cannot be both verbose and concise'),
+            (('always confirm', 'never confirm'), 'Cannot both always and never ask for confirmation'),
+            (('short responses', 'long responses'), 'Cannot require both short and long responses without scoping'),
+            (('keep it short', 'be thorough'), 'Cannot keep short and be thorough without scoping'),
+            (('proactive', 'only respond when asked'), 'Cannot be both proactive and only respond when asked'),
+            (('respond immediately', 'wait before responding'), 'Cannot respond immediately and wait'),
         ]
         
         for (phrase1, phrase2), description in conflict_pairs:

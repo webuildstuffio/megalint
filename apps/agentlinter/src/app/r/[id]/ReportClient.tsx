@@ -195,7 +195,7 @@ const CATEGORY_META: Record<string, {
       { id: "completeness/has-boundaries", severity: "warning", description: "Constraints and off-limits behaviors are defined" },
       { id: "completeness/has-memory-strategy", severity: "info", description: "Memory or session continuity strategy exists" },
       { id: "completeness/has-user-context", severity: "info", description: "User context (name, timezone, preferences) is provided" },
-      { id: "completeness/has-error-handling", severity: "info", description: "Error handling and fallback behavior is documented" },
+      { id: "completeness/has-error-awareness", severity: "info", description: "Error awareness — mentions of errors, failures, edge cases (see also has-error-recovery for actual recovery protocol)" },
       { id: "completeness/has-output-format", severity: "info", description: "Expected output format/style is defined" },
       { id: "completeness/has-workflow", severity: "info", description: "Multi-step workflows (deploy, review) are documented" },
       { id: "completeness/has-priorities", severity: "info", description: "Priority guidance for conflicting instructions" },

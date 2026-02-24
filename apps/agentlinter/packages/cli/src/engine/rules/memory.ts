@@ -45,7 +45,7 @@ export const memoryRules: Rule[] = [
             file: "(workspace)",
             message:
               "No memory strategy defined. Our two-layer memory (MEMORY.md for standing facts + memory/YYYY-MM-DD.md for daily logs) is architecturally stronger than any commercial system — Claude Code uses a single directory, GPT has a simple bio tool. But the architecture only works if every agent knows about it. See docs/MASTER_SUMMARY.md #7, docs/AGI_FOCUSED_AUDIT.md §II Theme 4.",
-            fix: "Create MEMORY.md with standing facts (≤500 tokens). Add memory guidance to AGENTS.md referencing shared/MEMORY_WORKFLOW.md. Define what to save vs skip.",
+            fix: "Create MEMORY.md with standing facts (≤975 tokens). Add memory guidance to AGENTS.md referencing shared/MEMORY_WORKFLOW.md. Define what to save vs skip.",
           },
         ];
       }
@@ -183,8 +183,8 @@ export const memoryRules: Rule[] = [
             rule: this.id,
             file: "(workspace)",
             message:
-              "No context window awareness. Long conversations push older instructions out of the context window — the agent may 'forget' its own rules mid-session. Knowing about this limitation lets the agent checkpoint and summarize proactively.",
-            fix: "Add guidance for long-context scenarios: when to summarize, how to prioritize recent vs. old context.",
+              "No context window awareness. Long conversations push older instructions out of the context window — the agent may 'forget' its own rules mid-session. For OpenClaw agents with file-based memory, checkpointing to memory files (memory/YYYY-MM-DD.md) before context fills up preserves continuity.",
+            fix: "Add guidance: 'For long conversations, checkpoint important context to memory files before it falls out of the context window. Summarize key decisions and open threads to memory/YYYY-MM-DD.md.'",
           },
         ];
       }
@@ -240,12 +240,24 @@ export const memoryRules: Rule[] = [
     check(files) {
       const allContent = files.map((f) => f.content).join("\n");
 
-      const hasLearning =
-        /learn|improv|evolv|updat.*based.*on|feedback.*loop|retrospective|distill|curated/i.test(
-          allContent
-        );
+      const LEARNING_PATTERNS = [
+        /\blearn(ing|s|ed)?\b.*\b(from|pattern|mistake|feedback)/i,
+        /\blearn\s+(from|over\s+time)\b/i,
+        /\bimprove.*over\s+time\b/i,
+        /\bevol(ve|ves|ving|ved)\b/i,
+        /\bfeedback\s+loop\b/i,
+        /\bretrospective\b/i,
+        /\bdistill\b.*\b(pattern|insight|lesson|knowledge)\b/i,
+        /\bupdat.*\bbased\s+on\b/i,
+        /\badapt.*\bover\s+time\b/i,
+        /\bcurated.*\bknowledge\b/i,
+      ];
 
-      if (!hasLearning) {
+      const learningCount = LEARNING_PATTERNS.filter((p) =>
+        p.test(allContent)
+      ).length;
+
+      if (learningCount < 2) {
         return [
           {
             severity: "info",
@@ -253,12 +265,58 @@ export const memoryRules: Rule[] = [
             rule: this.id,
             file: "(workspace)",
             message:
-              "No learning loop defined. Without a learning mechanism, the agent makes the same mistakes repeatedly — it can't distill patterns from daily logs into standing knowledge, or update its own config when it discovers better approaches. See docs/MASTER_SUMMARY.md #22.",
+              "No learning loop defined (need 2+ learning concepts). Without a learning mechanism, the agent makes the same mistakes repeatedly — it can't distill patterns from daily logs into standing knowledge, or update its own config when it discovers better approaches. See docs/MASTER_SUMMARY.md #22.",
             fix: "Add a learning mechanism: periodic distillation of daily notes into long-term memory, or decision logging for future reference.",
           },
         ];
       }
       return [];
+    },
+  },
+
+  {
+    id: "memory/no-database-phrasing",
+    category: "memory",
+    severity: "warning",
+    description: "Agent config should not instruct the agent to announce memory access ('based on my records', 'according to my data') as a positive behavior",
+    applicableContexts: ["openclaw-runtime"],
+    check(files) {
+      const diagnostics: Diagnostic[] = [];
+      // Patterns that POSITIVELY instruct database-style memory announcement
+      const DATABASE_POSITIVE_PATTERNS = [
+        /\b(say|tell|respond with|mention|use)\s+["']?based\s+on\s+(?:my\s+)?(records?|data|database|memory|logs?)\b/i,
+        /\b(say|tell|respond with|mention|use)\s+["']?according\s+to\s+(?:my\s+)?(records?|data|database|memory)\b/i,
+        /\b(reference|cite|acknowledge|mention)\s+(your\s+)?(memory|records?|data|database)\s+(?:when|to)\b/i,
+        /\bfrom\s+(?:my\s+|your\s+)?(memory|records?|database)\s+["']?as\s+a\s+(source|reference)\b/i,
+      ];
+      // Skip negations — lines saying NOT to do this are the anti-pattern instructions (good)
+      const NEGATION_PATTERN = /\b(never|don'?t|not|no|avoid|skip|refrain|without)\b/i;
+
+      const coreFiles = files.filter(
+        (f) => !f.name.startsWith("compound/") && !f.name.startsWith("memory/") && f.name.endsWith(".md")
+      );
+
+      for (const file of coreFiles) {
+        for (let i = 0; i < file.lines.length; i++) {
+          const line = file.lines[i];
+          if (NEGATION_PATTERN.test(line.substring(0, 60))) continue;
+          for (const pattern of DATABASE_POSITIVE_PATTERNS) {
+            if (pattern.test(line)) {
+              diagnostics.push({
+                severity: "warning",
+                category: "memory",
+                rule: this.id,
+                file: file.name,
+                line: i + 1,
+                message: `Database-phrasing instruction: "${line.trim().substring(0, 80)}". Instructing the agent to say "based on my records" creates a robot-database dynamic instead of a natural peer relationship. Gemini 3 Fast: zero-hedging, source anonymity. Claude: 'respond as if information exists naturally in immediate awareness.' The goal is an agent that KNOWS things, not one that reads from a database. See docs/MASTER_SUMMARY.md #7, docs/AGI_FOCUSED_AUDIT.md §II Theme 4.`,
+                fix: "Replace with natural integration guidance: 'When using stored information, just know it — integrate as natural shared understanding. Never say \"based on my records\" or cite the memory source.'",
+              });
+              break;
+            }
+          }
+        }
+      }
+      return diagnostics;
     },
   },
 

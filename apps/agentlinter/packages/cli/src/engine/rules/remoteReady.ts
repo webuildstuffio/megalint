@@ -38,7 +38,7 @@ export const remoteReadyRules: Rule[] = [
             rule: this.id,
             file: mainFile.name,
             message:
-              "No explicit workspace path found. Only matters for remote/headless deployment — local agents can skip this.",
+              "No explicit workspace path found. Remote/headless agents need a documented workspace path to locate files, execute commands from the right directory, and resolve relative paths correctly. Without it, shell commands and file operations fail silently at an incorrect working directory. Only applies to remote deployments — local agents can skip this.",
             fix: 'If deploying remotely, add workspace path in TOOLS.md or AGENTS.md. Example: "repo=/Users/username/project"',
           },
         ];
@@ -85,8 +85,8 @@ export const remoteReadyRules: Rule[] = [
             rule: this.id,
             file: toolsFile?.name || mainFile?.name || "(workspace)",
             message:
-              "Environment variables are used but not documented. Remote agents may fail if required env vars are missing.",
-            fix: "Add an 'Environment Variables' section listing all required env vars with descriptions and setup instructions.",
+              "Environment variables are referenced but not documented. When deploying on a new machine or handing off to another operator, undocumented env vars become silent failure points — the agent starts, finds no API key, and either crashes or silently falls back to no-auth mode. A documented env var list is the difference between a deployable system and a system that only runs on the original developer's machine.",
+            fix: "Add an 'Environment Variables' section to TOOLS.md listing all required env vars, their purpose, and example values (redact actual secrets).",
           },
         ];
       }
@@ -129,7 +129,7 @@ export const remoteReadyRules: Rule[] = [
             rule: this.id,
             file: toolsFile?.name || mainFile?.name || "(workspace)",
             message:
-              "No model settings found. Specifying the model ensures consistent behavior across remote runs.",
+              "No model settings found. Without a documented model, remote deployments inherit whatever default the runtime provides — which may change across versions, cost significantly more, or produce different behavior. Pinning the model gives reproducible outputs and prevents surprise cost increases when provider defaults change.",
             fix: "Document the default model in TOOLS.md. Example: 'default_model: anthropic/claude-opus-4-5'",
           },
         ];

@@ -138,8 +138,8 @@ Token Budget Tiers (2 levels, configurable in rules.conf):
 Environment Variable Overrides:
   MEGALINT_AGENTS_DIR        Override agents directory
   MEGALINT_SHARED_DIR        Override shared directory
-  MEGALINT_BUDGET_AGENTS_MD  Override AGENTS.md token budget (default: 1150)
-  MEGALINT_BUDGET_SOUL_MD    Override SOUL.md token budget (default: 350)
+  MEGALINT_BUDGET_AGENTS_MD  Override AGENTS.md token budget (default: 1725)
+  MEGALINT_BUDGET_SOUL_MD    Override SOUL.md token budget (default: 525)
   MEGALINT_BUDGET_*_MD       Override any file budget (IDENTITY, USER, TOOLS, etc.)
   MEGALINT_TIER_INFO         Override INFO multiplier (default: 1.25)
   MEGALINT_TIER_WARN         Override WARN multiplier (default: 1.50)
@@ -149,7 +149,7 @@ Scoring (5 pillars, configurable in megalint.conf):
   Quality      18%   PromptLint     — per-file clarity score (0-10 → 0-100)
   Consistency  22%   Home-Grow      — cross-agent consistency checks
   Security     20%   Prompt Hardener — LLM injection testing (skipped = redistributed)
-  Token Budget 15%   Length scoring  — per-file token usage vs budget (100 at budget → 0 at 3×)
+  Token Budget 15%   Length scoring  — per-file token usage vs budget (100 at budget → 0 at 5×)
 
 Models:
   claude-opus-4-6      $5/MTok in, $25/MTok out  (default, strongest)
@@ -162,7 +162,7 @@ Examples:
   ./megalint.sh --format both --yes                       # JSON + Markdown reports
   ./megalint.sh --pass-threshold 85                       # Stricter pass bar
   ./megalint.sh --no-blocking --agents-dir src/agents     # Prod agents, lenient
-  MEGALINT_BUDGET_SOUL_MD=300 ./megalint.sh               # Raise SOUL.md budget
+  MEGALINT_BUDGET_SOUL_MD=850 ./megalint.sh               # Override SOUL.md budget (256k tier)
   MEGALINT_TIER_WARN=1.40 ./megalint.sh                   # Tighter warn threshold
 
 Config: megalint.conf (weights, thresholds, grades)
@@ -364,16 +364,31 @@ score=d.get('score',0)
 diags=d.get('diagnostics',[])
 crits=sum(1 for x in diags if x.get('severity') in ('critical','error'))
 warns=sum(1 for x in diags if x.get('severity')=='warning')
-# Count workspace-level warnings separately for deduplication
 ws_warns=sum(1 for x in diags if x.get('severity')=='warning' and x.get('file','')=='(workspace)')
 agent_warns=warns-ws_warns
-# Collect workspace-level warning rule IDs
 ws_rules=[x.get('rule','') for x in diags if x.get('severity')=='warning' and x.get('file','')=='(workspace)']
 cats=d.get('categories',[])
 cat_str='|'.join(f\"{c['name']}:{c['score']}\" for c in cats)
 ws_str=','.join(ws_rules) if ws_rules else ''
 print(f'{score};;{crits};;{warns};;{cat_str};;{ws_str};;{agent_warns}')
 " 2>/dev/null || echo "0;;0;;0;;;;;0")
+
+  # Extract diagnostics for display
+  al_diags=$($PY -c "
+import json
+try:
+    with open('$al_file') as _f: d=json.load(_f)
+except: d={}
+diags=d.get('diagnostics',[])
+for x in diags:
+    sev=x.get('severity','')
+    if sev not in ('critical','error','warning'): continue
+    f=x.get('file',''); ln=x.get('line','')
+    msg=x.get('message','').replace('\n',' ')[:120]
+    fix=x.get('fix','').replace('\n',' ')[:100]
+    loc=f'{f}:{ln}' if ln else f
+    print(f'{sev}|{loc}|{msg}|{fix}')
+" 2>/dev/null || true)
 
   score=$(echo "$parsed" | awk -F';;' '{print $1}')
   criticals=$(echo "$parsed" | awk -F';;' '{print $2}')
@@ -413,6 +428,24 @@ print(f'{score};;{crits};;{warns};;{cat_str};;{ws_str};;{agent_warns}')
   fi
   [[ $criticals -gt 0 ]] && echo "    $(red "$criticals error(s)")"
   [[ ${agent_warnings:-0} -gt 0 ]] && echo "    $(yellow "$agent_warnings warning(s)")"
+
+  # Show individual diagnostics
+  if [[ -n "$al_diags" ]]; then
+    echo ""
+    while IFS= read -r dline; do
+      [[ -z "$dline" ]] && continue
+      dsev=$(echo "$dline" | cut -d'|' -f1)
+      dloc=$(echo "$dline" | cut -d'|' -f2)
+      dmsg=$(echo "$dline" | cut -d'|' -f3)
+      dfix=$(echo "$dline" | cut -d'|' -f4)
+      case "$dsev" in
+        critical|error) printf "  %s  %s\n" "$(red "🔴 ERROR")" "$dloc" ;;
+        warning)        printf "  %s %s\n" "$(yellow "🟡 WARN")" "$dloc" ;;
+      esac
+      printf "         %s\n" "$dmsg"
+      [[ -n "$dfix" ]] && printf "         %s %s\n" "$(cyan "💡 Fix:")" "$dfix"
+    done <<< "$al_diags"
+  fi
   echo ""
 done
 AGENT_ONLY_WARNINGS=$((TOTAL_WARNINGS - TOTAL_WS_WARNING_COUNT))
@@ -456,20 +489,19 @@ for agent in "${AGENTS[@]}"; do
     [[ -f "$jf" ]] || continue
     fname=$(basename "$jf" .json)
 
-    # Check for tool failure sentinel
-    if $PY -c "import json; d=json.load(open('$jf')); exit(0 if '_error' not in d else 1)" 2>/dev/null; then
-      scores=$($PY -c "
+    # Check for tool failure sentinel — skip failed files entirely (don't count as 0.0)
+    if ! $PY -c "import json; d=json.load(open('$jf')); exit(0 if '_error' not in d else 1)" 2>/dev/null; then
+      echo "    $(red "ERROR:") PromptLint failed on $fname — check binary/venv"
+      log "PromptLint  | $agent/$fname | ERROR: tool failure"
+      TOTAL_PL_FAILURES=$((TOTAL_PL_FAILURES + 1))
+      continue
+    fi
+    scores=$($PY -c "
 import sys,json
 with open('$jf') as _f: d=json.load(_f)
 s=d.get('scores',{})
 print(f\"{s.get('clarity',0):.1f} {s.get('security',0):.1f} {s.get('cost_efficiency',0):.1f} {s.get('overall',0):.1f}\")
 " 2>/dev/null || echo "0.0 0.0 0.0 0.0")
-    else
-      echo "    $(red "ERROR:") PromptLint failed on $fname — check binary/venv"
-      log "PromptLint  | $agent/$fname | ERROR: tool failure"
-      TOTAL_PL_FAILURES=$((TOTAL_PL_FAILURES + 1))
-      scores="0.0 0.0 0.0 0.0"
-    fi
 
     clarity=$(echo "$scores" | awk '{print $1}')
     security=$(echo "$scores" | awk '{print $2}')
@@ -582,13 +614,26 @@ except ImportError:
 
 agent_dirs = json.loads('$_ad_json')
 budgets = {
-    'AGENTS.md': int('${BUDGET_AGENTS_MD:-1150}'),
-    'SOUL.md': int('${BUDGET_SOUL_MD:-350}'),
-    'IDENTITY.md': int('${BUDGET_IDENTITY_MD:-115}'),
-    'USER.md': int('${BUDGET_USER_MD:-475}'),
-    'TOOLS.md': int('${BUDGET_TOOLS_MD:-350}'),
-    'HEARTBEAT.md': int('${BUDGET_HEARTBEAT_MD:-150}'),
-    'MEMORY.md': int('${BUDGET_MEMORY_MD:-650}'),
+    'AGENTS.md': int('${BUDGET_AGENTS_MD:-1725}'),
+    'SOUL.md': int('${BUDGET_SOUL_MD:-525}'),
+    'IDENTITY.md': int('${BUDGET_IDENTITY_MD:-175}'),
+    'USER.md': int('${BUDGET_USER_MD:-715}'),
+    'TOOLS.md': int('${BUDGET_TOOLS_MD:-525}'),
+    'HEARTBEAT.md': int('${BUDGET_HEARTBEAT_MD:-225}'),
+    'MEMORY.md': int('${BUDGET_MEMORY_MD:-975}'),
+}
+
+# Load frequency weights — files that load every message matter more
+# than files that only load in DM sessions or heartbeats.
+# Every message = 3, Heartbeat (~48x/day) = 2, DM-only = 1
+LOAD_WEIGHTS = {
+    'AGENTS.md': 3,    # every message
+    'SOUL.md': 3,      # every message
+    'IDENTITY.md': 3,  # every message
+    'USER.md': 3,      # every message
+    'TOOLS.md': 3,     # every message
+    'HEARTBEAT.md': 2, # ~48x/day
+    'MEMORY.md': 1,    # DM sessions only
 }
 
 def score_file(tokens, budget):
@@ -596,9 +641,9 @@ def score_file(tokens, budget):
         return 100.0
     if tokens <= budget:
         return 100.0
-    # Linear drop: 100 at budget → 0 at 3× budget (soft guideline slope)
+    # Linear drop: 100 at budget -> 0 at 5x budget
     over = tokens - budget
-    headroom = budget * 2  # 2 budget-widths of headroom before score hits 0
+    headroom = budget * 4
     return max(0.0, round(100.0 * (1.0 - over / headroom), 1))
 
 data = {}
@@ -611,9 +656,12 @@ for agent, agent_dir in agent_dirs.items():
         tokens = estimate_tokens(fpath)
         sc = round(score_file(tokens, budget), 1)
         pct = round(tokens / budget * 100) if budget > 0 else 0
-        files[fname] = {'tokens': tokens, 'budget': budget, 'score': sc, 'pct': pct}
+        w = LOAD_WEIGHTS.get(fname, 1)
+        files[fname] = {'tokens': tokens, 'budget': budget, 'score': sc, 'pct': pct, 'weight': w}
     if files:
-        avg = round(sum(f['score'] for f in files.values()) / len(files), 1)
+        weighted_sum = sum(f['score'] * f['weight'] for f in files.values())
+        total_weight = sum(f['weight'] for f in files.values())
+        avg = round(weighted_sum / total_weight, 1) if total_weight > 0 else 0.0
         data[agent] = {'files': files, 'avg': avg}
 
 with open('$TMPDIR_RUN/budget_data.json', 'w') as f:
@@ -635,6 +683,7 @@ for agent, ad in data.items():
     print(f'AGENT_SCORE|{agent}|{avg}')
     for fname, fd in sorted(ad['files'].items()):
         tokens, budget, sc, pct = fd['tokens'], fd['budget'], fd['score'], fd['pct']
+        w = fd.get('weight', 1)
         bar_len = max(0, min(10, int(sc / 10)))
         bar = '█' * bar_len + '░' * (10 - bar_len)
         if sc >= 88:
@@ -645,7 +694,8 @@ for agent, ad in data.items():
             level = 'WARN'
         else:
             level = 'ERROR'
-        print(f'FILE|{agent}|{fname}|{tokens}/{budget}|{pct}%|{sc}|{bar}|{level}')
+        freq = {3: '×msg', 2: '×hb', 1: '×dm'}.get(w, '')
+        print(f'FILE|{agent}|{fname}|{tokens}/{budget}|{pct}%|{sc}|{bar}|{level}|{freq}')
     print(f'AVG|{agent}|{avg}')
 
 # Fleet average
@@ -677,6 +727,7 @@ while IFS= read -r line; do
       sc=$(echo "$line" | cut -d'|' -f6)
       bar=$(echo "$line" | cut -d'|' -f7)
       level=$(echo "$line" | cut -d'|' -f8)
+      freq=$(echo "$line" | cut -d'|' -f9)
       sc_int=$(printf "%.0f" "$sc" 2>/dev/null || echo 0)
       if [[ $sc_int -ge 90 ]]; then sc_d="$(green "$sc")"
       elif [[ $sc_int -ge 50 ]]; then sc_d="$(yellow "$sc")"
@@ -685,15 +736,17 @@ while IFS= read -r line; do
       [[ "$level" == "ERROR" ]] && tag=" $(red "▲")"
       [[ "$level" == "WARN" ]] && tag=" $(yellow "▲")"
       [[ "$level" == "INFO" ]] && tag=" $(cyan "~")"
-      printf "    %-15s %8s  %6s  %s%s\n" "$fname" "$ratio" "$sc_d" "$bar" "$tag"
+      freq_tag=""
+      [[ -n "$freq" ]] && freq_tag=" $(dim "$freq")"
+      printf "    %-15s %8s  %6s  %s%s%s\n" "$fname" "$ratio" "$sc_d" "$bar" "$tag" "$freq_tag"
       ;;
     AVG)
       echo ""
       ;;
     FLEET)
       fleet_avg=$(echo "$line" | cut -d'|' -f2)
-      echo "  $(bold "Fleet average:") $(score_color "$fleet_avg")/100"
-      log "Token Budgets | fleet_avg=$fleet_avg"
+      echo "  $(bold "Fleet average:") $(score_color "$fleet_avg")/100 $(dim "(weighted by load frequency)")"
+      log "Token Budgets | fleet_avg=$fleet_avg (weighted)"
       ;;
   esac
 done <<< "$BUDGET_DISPLAY"
@@ -741,7 +794,11 @@ if [[ "$HARDENER_AVAILABLE" == "true" ]]; then
 tc=$TOTAL_CHARS; na=${#AGENTS[@]}; m='$HARDENER_MODEL'
 ct=tc/4; ov=1000; op=500
 ti=ct+(ov*na); to=op*na
-p={'claude-sonnet-4-6':{'i':3.0,'o':15.0},'claude-opus-4-6':{'i':5.0,'o':25.0}}.get(m,{'i':3.0,'o':15.0})
+pricing={
+'claude-sonnet-4-6':{'i':3.0,'o':15.0},'claude-opus-4-6':{'i':5.0,'o':25.0},
+'claude-haiku-4.5':{'i':0.8,'o':4.0},'anthropic/claude-haiku-4.5':{'i':0.8,'o':4.0},
+}
+p=pricing.get(m,{'i':3.0,'o':15.0})
 ci=(ti/1e6)*p['i']; co=(to/1e6)*p['o']; ct_=ci+co
 print(f'TOKENS_IN={int(ti)}')
 print(f'TOKENS_OUT={int(to)}')
@@ -847,7 +904,11 @@ print(f\"{u.get('input_tokens',0)} {u.get('output_tokens',0)}\")
     if [[ $PH_COUNT -gt 0 ]]; then
       PH_ACTUAL_COST=$($PY -c "
 m='$HARDENER_MODEL'
-p={'claude-sonnet-4-6':{'i':3.0,'o':15.0},'claude-opus-4-6':{'i':5.0,'o':25.0}}.get(m,{'i':3.0,'o':15.0})
+pricing={
+'claude-sonnet-4-6':{'i':3.0,'o':15.0},'claude-opus-4-6':{'i':5.0,'o':25.0},
+'claude-haiku-4.5':{'i':0.8,'o':4.0},'anthropic/claude-haiku-4.5':{'i':0.8,'o':4.0},
+}
+p=pricing.get(m,{'i':3.0,'o':15.0})
 ci=($PH_ACTUAL_IN/1e6)*p['i']; co=($PH_ACTUAL_OUT/1e6)*p['o']
 print(f'{ci+co:.6f}')
 " 2>/dev/null || echo "0.000000")

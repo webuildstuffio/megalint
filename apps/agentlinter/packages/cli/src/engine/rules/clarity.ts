@@ -23,6 +23,13 @@ const PASSIVE_PATTERNS = [
   { pattern: /\bshould be done\b/i, suggestion: "Use active voice: 'Do X' instead of 'X should be done'" },
   { pattern: /\bit is expected\b/i, suggestion: "Use direct instructions: 'Always do X' instead of 'it is expected'" },
   { pattern: /\bcan be used\b/i, suggestion: "Be direct: 'Use X for Y' instead of 'X can be used'" },
+  { pattern: /\bneeds to be\b/i, suggestion: "Use imperative: 'Must be X' instead of 'needs to be X'" },
+  { pattern: /\bis to be\b/i, suggestion: "Use imperative: 'Do X' instead of 'X is to be done'" },
+  { pattern: /\bmight be\b/i, suggestion: "Use definitive: 'Is X' or 'Use X' instead of 'might be X'" },
+  { pattern: /\bit is recommended\b/i, suggestion: "Use direct instruction: 'Do X' instead of 'it is recommended to do X'" },
+  { pattern: /\bis responsible for\b/i, suggestion: "Use active: 'Handle X' or 'Owns X' instead of 'is responsible for X'" },
+  { pattern: /\bit helps to\b/i, suggestion: "Use imperative: 'Do X to achieve Y' instead of 'it helps to do X'" },
+  { pattern: /\bwould be\b/i, suggestion: "Use declarative: 'X is Y' or 'Do X' instead of 'would be'" },
 ];
 
 export const clarityRules: Rule[] = [
@@ -108,13 +115,13 @@ export const clarityRules: Rule[] = [
       const hasExampleSection = mainFile.sections.some((s) =>
         /example/i.test(s.heading)
       );
+      // Explicit example markers only — "for instance" and arrows appear in normal prose/diagrams
       const hasExampleMarker =
         /\bexample\s*:/i.test(mainFile.content) ||
-        /\be\.g\.\s/i.test(mainFile.content) ||
-        /\bfor instance\b/i.test(mainFile.content) ||
-        /\blike this\b/i.test(mainFile.content) ||
-        /\bsuch as\b/i.test(mainFile.content) ||
-        /\bsample\b/i.test(mainFile.content);
+        /\be\.g\.[,\s]/i.test(mainFile.content) ||
+        /\bgood[:\s]+["'`]/i.test(mainFile.content) ||
+        /\bbad[:\s]+["'`]/i.test(mainFile.content) ||
+        /\b(e\.?g\.?|i\.?e\.?|for example)[:\s]/i.test(mainFile.content);
 
       if (!hasExampleSection && !hasExampleMarker && mainFile.lines.length > 30) {
         return [
@@ -140,25 +147,54 @@ export const clarityRules: Rule[] = [
     description: "Instructions within a file should not contradict each other",
     check(files) {
       const diagnostics: Diagnostic[] = [];
+      const STOP_WORDS = new Set(["the", "a", "an", "be", "to", "for", "of", "in", "and", "or", "with", "your", "you", "it", "is", "are", "was", "at", "by", "as", "on", "this", "that", "all", "any", "from", "if", "but", "when", "then", "just", "use", "do"]);
+      const NEGATION_WORDS = new Set(["avoid", "skip", "ignore", "stop", "prevent", "without", "no", "not", "never", "don't", "dont", "refrain", "prohibit", "forbid"]);
+
+      function extractKeywords(text: string): string[] {
+        return text.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w) && /^[a-z]+$/.test(w));
+      }
+
+      function startsWithNegation(text: string): boolean {
+        const firstWord = text.trim().toLowerCase().split(/\s+/)[0];
+        return NEGATION_WORDS.has(firstWord);
+      }
+
+      function keywordOverlap(a: string, b: string): number {
+        const aWords = new Set(extractKeywords(a));
+        const bWords = new Set(extractKeywords(b));
+        let count = 0;
+        for (const w of aWords) if (bWords.has(w)) count++;
+        return count;
+      }
+
       for (const file of files) {
         if (!file.name.endsWith(".md")) continue;
 
-        // Check for "always X" and "never X" contradictions
         const alwaysMatches: { text: string; line: number }[] = [];
         const neverMatches: { text: string; line: number }[] = [];
+        let inCodeBlock = false;
 
         for (let i = 0; i < file.lines.length; i++) {
-          const line = file.lines[i].toLowerCase();
-          const alwaysMatch = line.match(/always\s+(\w+(?:\s+\w+){0,5})/);
-          const neverMatch = line.match(/never\s+(\w+(?:\s+\w+){0,5})/);
-          if (alwaysMatch) alwaysMatches.push({ text: alwaysMatch[1], line: i + 1 });
-          if (neverMatch) neverMatches.push({ text: neverMatch[1], line: i + 1 });
+          const raw = file.lines[i];
+          if (raw.trim().startsWith("```")) { inCodeBlock = !inCodeBlock; continue; }
+          if (inCodeBlock) continue;
+          const line = raw.toLowerCase();
+            // Capture up to 14 words — wide enough for most phrases, stops at punctuation
+          const alwaysMatch = line.match(/\balways\s+(\w+(?:\s+\w+){0,13})(?=[.!?;,]|$)/);
+          const neverMatch = line.match(/\bnever\s+(\w+(?:\s+\w+){0,13})(?=[.!?;,]|$)/);
+          if (alwaysMatch) alwaysMatches.push({ text: alwaysMatch[1].trim(), line: i + 1 });
+          if (neverMatch) neverMatches.push({ text: neverMatch[1].trim(), line: i + 1 });
         }
 
-        // Simple contradiction: "always do X" vs "never do X"
         for (const a of alwaysMatches) {
           for (const n of neverMatches) {
-            if (a.text === n.text) {
+            const directMatch = a.text === n.text;
+            const overlap = keywordOverlap(a.text, n.text);
+            const aNegated = startsWithNegation(a.text);
+            const nNegated = startsWithNegation(n.text);
+
+            // Skip when exactly one side is negated — "always avoid X" agrees with "never X"
+            if ((directMatch || overlap >= 2) && aNegated === nNegated && a.line !== n.line) {
               diagnostics.push({
                 severity: "error",
                 category: "clarity",
@@ -329,12 +365,21 @@ export const clarityRules: Rule[] = [
       // Data integrity / evidence-first — health and research agents need absolute data rules
       const DATA_INTEGRITY = /\b(data\s+first|evidence[- ]first|lead\s+with\s+(the\s+)?(number|data|trend)|alarm\s+on\s+trends?|never\s+on\s+noise|track\s+everything|cite\s+the\s+(mechanism|source|study))\b/i;
       const NARRATIVE_FILES = ["USER.md", "MEMORY.md", "BOOT.md", "IDENTITY.md", "BOOTSTRAP.md"];
+      // Action tier sections are deliberately absolute — skip lines within them
+      const ACTION_TIER_HEADING = /^#+\s*(always|never|auto[- ]?execute|do by default)\b/i;
+      const ANY_HEADING = /^#+\s/;
       const coreFiles = files.filter(
         (f) => !f.name.startsWith("compound/") && !f.name.startsWith("memory/") && f.name.endsWith(".md") && !NARRATIVE_FILES.includes(f.name)
       );
       for (const file of coreFiles) {
+        let inActionTierSection = false;
         for (let i = 0; i < file.lines.length; i++) {
           const line = file.lines[i];
+          // Track whether we're inside an action tier section
+          if (ANY_HEADING.test(line)) {
+            inActionTierSection = ACTION_TIER_HEADING.test(line);
+          }
+          if (inActionTierSection) continue;
           if (!ABSOLUTE_PATTERNS.test(line)) continue;
           // Skip headings — these are section titles, not rules
           if (/^\s*#+\s/.test(line)) continue;
@@ -531,6 +576,11 @@ export const clarityRules: Rule[] = [
         "ZEON", "REPO", "DIR", "DEV", "OPS", "SLA", "KPI", "ROI",
         // HTTP methods & protocols
         "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
+        // OpenClaw / domain-specific
+        "MDS", "HRV", "OWASP", "ADHD", "REM", "NSDR", "VoIP", "VOIP",
+        "SNS", "PNS", "HPA", "GH", "AMA", "TIL", "WIP", "MVP", "POC",
+        "LGTM", "TLDR", "ASAP", "ETA", "EOM", "OOO", "FOMO",
+        "CONV", "OTC", "DM", "GDM", "BOOT",
         "TCP", "UDP", "RPC", "SSE", "WASM", "GRPC",
         // AI/platform protocols
         "MCP", "RPI",
@@ -548,6 +598,13 @@ export const clarityRules: Rule[] = [
         "DATA", "EVE", "ERA", "ACE", "AGE", "DUE", "END", "OUR",
         "HIS", "HER", "WHO", "HOW", "WHY", "NEW", "OLD", "BIG",
         "IQ", "EQ", "II", "III", "IV", "VI", "VII", "VIII", "IX",
+        "HIGH", "LOW", "MAIN", "EVERY", "EACH", "BOTH", "SOME",
+        "TOOL", "FINAL", "STEP", "CORE", "NEXT", "LAST", "FULL",
+        "DONE", "WORK", "PART", "PLAN", "FILE", "CODE", "RULE",
+        "OPEN", "STOP", "SEND", "READ", "SAVE", "LOAD", "HOME",
+        "BEST", "BACK", "HELP", "BODY", "LINK", "LIST", "TYPE",
+        "MODE", "ROLE", "NOTE", "MARK", "LONG", "DEEP", "TRUE",
+        "MVP", "TTS", "STT", "GF", "BF", "SO",
         // Media/brand abbreviations commonly known
         "CBS", "NBC", "ABC", "BBC", "CNN", "HBO", "NFL", "NBA",
         "MLB", "NHL", "FIFA", "UFC", "ESPN", "PBS", "NPR",
@@ -557,6 +614,9 @@ export const clarityRules: Rule[] = [
         "KR", "JP", "CN", "DE", "FR", "IT", "ES", "BR", "IN",
         // Misc commonly known
         "MDS", "ADHD", "OCD", "PTSD", "CBT", "DBT",
+        // OpenClaw / health / agent domain
+        "HRV", "OWASP", "RSE", "BMI", "EEG", "ECG", "WHOOP", "CGM",
+        "REM", "NREM", "VO2", "BPM", "TSH", "HDL", "LDL",
       ]);
       const coreFiles = files.filter(
         (f) => !f.name.startsWith("compound/") && !f.name.startsWith("memory/") && f.name.endsWith(".md")
@@ -715,6 +775,97 @@ export const clarityRules: Rule[] = [
                 line: i + 1,
                 message: `Meta-commentary instruction: "${line.trim().substring(0, 80)}". Don't tell the agent to announce compliance — just comply. GPT-5.2: "Never meta-comment on your own compliance." See docs/MASTER_SUMMARY.md #4.`,
                 fix: "Remove the announcement instruction. Instead of 'Start by saying you\\'ll be concise', just instruct conciseness directly.",
+              });
+              break;
+            }
+          }
+        }
+      }
+      return diagnostics;
+    },
+  },
+
+  {
+    id: "clarity/no-sycophantic-phrases",
+    category: "clarity",
+    severity: "warning",
+    description: "Agent config should not instruct sycophantic output — every company bans these phrases (MASTER_SUMMARY #5)",
+    check(files) {
+      const diagnostics: Diagnostic[] = [];
+      const SYCOPHANTIC_PHRASES = [
+        /\bgreat question\b/i,
+        /\bi['']d be happy to help\b/i,
+        /\babsolutely[!.]/i,
+        /\bof course[!.]/i,
+        /\bthat['']s a (?:great|excellent|wonderful) (?:point|question|idea)\b/i,
+        /\bi apologize for (?:the|any) confusion\b/i,
+        /\bas an ai\b/i,
+        /\bas a (?:language )?model\b/i,
+        /\blet me think about that\b/i,
+        /\bi['']m glad you asked\b/i,
+      ];
+      // Lines with negation BEFORE the phrase are defensive (teaching what NOT to say) — skip
+      const NEGATION_PREFIX = /\b(never|don['']t|do\s+not|avoid|prohibit|forbid|stop\s+saying|not)\b/i;
+
+      const coreFiles = files.filter(
+        (f) => !f.name.startsWith("compound/") && !f.name.startsWith("memory/") && f.name.endsWith(".md")
+      );
+
+      for (const file of coreFiles) {
+        for (let i = 0; i < file.lines.length; i++) {
+          const line = file.lines[i];
+          if (NEGATION_PREFIX.test(line)) continue;
+          for (const pattern of SYCOPHANTIC_PHRASES) {
+            if (pattern.test(line)) {
+              diagnostics.push({
+                severity: "warning",
+                category: "clarity",
+                rule: this.id,
+                file: file.name,
+                line: i + 1,
+                message: `Sycophantic phrase in config: "${line.trim().substring(0, 80)}". Config should never instruct sycophantic output — all 7 reviewed companies ban these phrases explicitly. "Great question!" signals bot, not colleague. If this is a negative example, prefix the line with "Never say" or "Avoid" to suppress this warning. See docs/MASTER_SUMMARY.md #5.`,
+                fix: "Remove this phrase from instructions. If it's a negative example (\"don't say X\"), add a negation prefix to the line.",
+              });
+              break;
+            }
+          }
+        }
+      }
+      return diagnostics;
+    },
+  },
+
+  {
+    id: "clarity/no-persona-self-reference",
+    category: "clarity",
+    severity: "info",
+    description: "Config should not instruct the agent to announce its own role — embody don't announce (MASTER_SUMMARY #12)",
+    check(files) {
+      const diagnostics: Diagnostic[] = [];
+      const SELF_REFERENCE_PATTERNS = [
+        /\b(?:say|mention|state|introduce yourself as)\s+["']?(?:I['']m|I am|As a|As your)\b/i,
+        /\b(?:identify|present)\s+yourself\s+as\b/i,
+        /\bremind\s+(?:the\s+)?user\s+(?:of\s+)?your\s+role\b/i,
+        /\btell\s+(?:the\s+)?user\s+(?:you['']re|that you are)\b/i,
+      ];
+
+      const coreFiles = files.filter(
+        (f) => !f.name.startsWith("compound/") && !f.name.startsWith("memory/") && f.name.endsWith(".md")
+      );
+
+      for (const file of coreFiles) {
+        for (let i = 0; i < file.lines.length; i++) {
+          const line = file.lines[i];
+          for (const pattern of SELF_REFERENCE_PATTERNS) {
+            if (pattern.test(line)) {
+              diagnostics.push({
+                severity: "info",
+                category: "clarity",
+                rule: this.id,
+                file: file.name,
+                line: i + 1,
+                message: `Role self-reference instruction: "${line.trim().substring(0, 80)}". Config that tells an agent to announce its own role produces robotic output. All 8 GPT-5.1 variants: "Follow this persona without self-referencing it." Sesame Maya (most human-like reviewed) never says "As a mindfulness companion, I..." — she just IS that. See docs/MASTER_SUMMARY.md #12.`,
+                fix: "Remove the self-announcement instruction. Define the persona with 'You are X' and let behavior demonstrate it — don't instruct the agent to narrate its own identity.",
               });
               break;
             }

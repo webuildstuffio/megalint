@@ -59,13 +59,13 @@ CHECK_BOOT_CONVENTIONS_REF=1
 CHECK_MEMORY_SURFACING=1
 CHECK_SOUL_TONE_CALIBRATED=1
 
-BUDGET_AGENTS_MD=1150
-BUDGET_SOUL_MD=350
-BUDGET_IDENTITY_MD=115
-BUDGET_USER_MD=475
-BUDGET_TOOLS_MD=350
-BUDGET_HEARTBEAT_MD=150
-BUDGET_MEMORY_MD=650
+BUDGET_AGENTS_MD=1725
+BUDGET_SOUL_MD=525
+BUDGET_IDENTITY_MD=175
+BUDGET_USER_MD=715
+BUDGET_TOOLS_MD=525
+BUDGET_HEARTBEAT_MD=225
+BUDGET_MEMORY_MD=975
 
 # Token budget severity multipliers (relative to base budget)
 # INFO  = base * TIER_INFO  — heads-up, approaching limit
@@ -396,8 +396,16 @@ check_canonical_wording() {
   # topic_keyword|canonical_phrase
   # If a file mentions the topic but not in canonical form, warn.
   local checks=(
-    "autism|mild autism traits"
-    "bipolar|Bipolar II"
+    "adhd|ADHD"
+    "korea\b|South Korea"
+    "korean\b|Korean"
+    "discord\b|Discord"
+    "telegram\b|Telegram"
+    "whatsapp\b|WhatsApp"
+    "openai\b|OpenAI"
+    "anthropic\b|Anthropic"
+    "openclaw\b|OpenClaw"
+    "clawdbot\b|Clawdbot"
   )
   for agent in "${AGENTS[@]}"; do
     for f in "$AGENTS_DIR/$agent/USER.md" "$AGENTS_DIR/$agent/MEMORY.md"; do

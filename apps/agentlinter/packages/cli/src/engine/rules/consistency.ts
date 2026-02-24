@@ -109,8 +109,8 @@ export const consistencyRules: Rule[] = [
           category: "consistency",
           rule: this.id,
           file: "(workspace)",
-          message: `Mixed file naming: ${upperCase.length} UPPERCASE (${upperCase.map((f) => f.name).join(", ")}), ${lowerCase.length} lowercase (${lowerCase.map((f) => f.name).join(", ")}). Pick one convention.`,
-          fix: "Use consistent naming — UPPERCASE.md is the common convention for agent files.",
+          message: `Mixed file naming: ${upperCase.length} UPPERCASE (${upperCase.map((f) => f.name).join(", ")}), ${lowerCase.length} lowercase (${lowerCase.map((f) => f.name).join(", ")}). OpenClaw MDS uses UPPERCASE.md by convention (SOUL.md, AGENTS.md, USER.md) — mixing conventions makes glob patterns and reference checks brittle; a "see soul.md" reference won't match "SOUL.md".`,
+          fix: "Use consistent naming — UPPERCASE.md is the OpenClaw convention for agent files. Rename lowercase files to UPPERCASE.",
         });
       }
 
@@ -279,17 +279,18 @@ export const consistencyRules: Rule[] = [
       }
 
       // Cross-file check: same topic, different permissions
+      // Require 3+ shared content words (>3 chars) to reduce false positives from
+      // coincidental 2-word overlaps across files
       for (let a = 0; a < permStatements.length; a++) {
         for (let b = a + 1; b < permStatements.length; b++) {
           const sa = permStatements[a];
           const sb = permStatements[b];
           if (sa.file === sb.file) continue;
           if (sa.type === sb.type) continue;
-          // Simple topic similarity: shared keywords
           const wordsA = new Set(sa.topic.split(/\s+/).filter(w => w.length > 3));
           const wordsB = new Set(sb.topic.split(/\s+/).filter(w => w.length > 3));
           const shared = [...wordsA].filter(w => wordsB.has(w));
-          if (shared.length >= 2) {
+          if (shared.length >= 3) {
             diagnostics.push({
               severity: "error",
               category: "consistency",
@@ -324,8 +325,9 @@ export const consistencyRules: Rule[] = [
 
       if (!isCasual && !isFormal) return [];
 
+      const OPERATIONAL_FILES = new Set(["AGENTS.md", "TOOLS.md", "BOOT.md", "HEARTBEAT.md", "IDENTITY.md"]);
       const otherFiles = files.filter(
-        (f) => f.name !== "SOUL.md" && !f.name.startsWith("compound/") && !f.name.startsWith("memory/") && f.name.endsWith(".md")
+        (f) => f.name !== "SOUL.md" && !OPERATIONAL_FILES.has(f.name) && !f.name.startsWith("compound/") && !f.name.startsWith("memory/") && f.name.endsWith(".md")
       );
 
       for (const file of otherFiles) {
@@ -511,8 +513,8 @@ export const consistencyRules: Rule[] = [
             category: "consistency",
             rule: this.id,
             file: "(workspace)",
-            message: `Multiple timezones referenced: ${uniqueTzs.join(", ")}. Standardize to one.`,
-            fix: "Use one timezone consistently (e.g., Asia/Seoul). Convert if needed.",
+            message: `Multiple local timezones referenced: ${uniqueTzs.join(", ")}. When different files reference different timezones, agents producing dates/times may flip between them unpredictably — a reminder set in one file uses KST while the response formats in EST. Pick one canonical timezone; store it in USER.md.`,
+            fix: "Pick one timezone (e.g., America/New_York or Asia/Seoul) and use it consistently across all files. Remove or convert conflicting references.",
           });
         }
       }
@@ -550,14 +552,14 @@ export const consistencyRules: Rule[] = [
         }
       }
 
-      // Cross-check
+      // Cross-check — require 3+ shared content words to avoid coincidental overlap FPs
       for (let a = 0; a < statements.length; a++) {
         for (let b = a + 1; b < statements.length; b++) {
           const sa = statements[a];
           const sb = statements[b];
           if (sa.file === sb.file || sa.level === sb.level) continue;
           const shared = sa.keywords.filter((w) => sb.keywords.includes(w));
-          if (shared.length >= 2) {
+          if (shared.length >= 3) {
             diagnostics.push({
               severity: "warning",
               category: "consistency",
@@ -620,6 +622,61 @@ export const consistencyRules: Rule[] = [
         }
       }
       return diagnostics;
+    },
+  },
+
+  // ─── New rules from P3 backlog (2026-02-24) ───
+
+  {
+    id: "consistency/action-tiers-present",
+    category: "consistency",
+    severity: "error",
+    description: "AGENTS.md must contain OpenClaw action tiers (Always/When Asked/Ask First/Never) — strict enforcement",
+    applicableContexts: ["openclaw-runtime"],
+    check(files) {
+      const agentsFile = files.find((f) => f.name === "AGENTS.md");
+      if (!agentsFile) return [];
+
+      const ACTION_TIER_HEADINGS = /^#+\s*(always|when asked|when requested|ask first|confirm before|never)\b/im;
+      const ACTION_TIER_TABLE = /\*\*(always|when asked|when requested|ask first|confirm before|never)\*\*/i;
+
+      const hasHeadings = ACTION_TIER_HEADINGS.test(agentsFile.content);
+      const hasTable = ACTION_TIER_TABLE.test(agentsFile.content);
+
+      if (!hasHeadings && !hasTable) {
+        return [{
+          severity: "error",
+          category: "consistency",
+          rule: this.id,
+          file: "AGENTS.md",
+          message: "AGENTS.md has no action tiers. Action tiers (Always/When Asked/Ask First/Never) are OpenClaw's signature architecture — they map every possible agent action to an explicit permission level. Without them, the agent has no operating model: it either asks permission for everything (useless) or does everything without judgment (dangerous). Every OpenClaw agent MUST have at least 3 of 4 tiers. See docs/MASTER_SUMMARY.md #3.",
+          fix: "Add action tier structure: ## Always (auto-execute with notify), ## When Asked (user must request), ## Ask First (confirm before doing), ## Never (hard no). See shared/CONVENTIONS.md for format.",
+        }];
+      }
+      return [];
+    },
+  },
+
+  {
+    id: "consistency/shared-conventions-referenced",
+    category: "consistency",
+    severity: "warning",
+    description: "BOOT.md should reference CONVENTIONS.md to ensure shared behavioral law is loaded at startup",
+    applicableContexts: ["openclaw-runtime"],
+    check(files) {
+      const bootFile = files.find((f) => f.name === "BOOT.md");
+      if (!bootFile) return [];
+
+      if (/CONVENTIONS\.md/i.test(bootFile.content)) return [];
+
+      return [{
+        severity: "warning",
+        category: "consistency",
+        rule: this.id,
+        file: "BOOT.md",
+        message: "BOOT.md does not reference CONVENTIONS.md. CONVENTIONS.md is the shared behavioral law inherited by all agents at boot — it contains resourcefulness directives, communication laws, memory workflow, and action tier format. Without loading it at startup, the agent misses all shared directives and may behave inconsistently with other agents. See docs/AGI_FOCUSED_AUDIT.md §IV Rules Tier 1.",
+        fix: "Add a load step in BOOT.md: '- [ ] Read shared/CONVENTIONS.md — shared behavioral law'. Place it early in the boot sequence, before agent-specific files.",
+      }];
     },
   },
 

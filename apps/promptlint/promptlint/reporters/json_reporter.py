@@ -35,6 +35,7 @@ class JSONReporter:
                     'description': issue.description,
                     'location': issue.location,
                     'suggestion': issue.suggestion,
+                    **({'why': issue.why} if issue.why else {}),
                 }
                 for issue in result.issues
             ],
