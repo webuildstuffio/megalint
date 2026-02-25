@@ -20,7 +20,7 @@ See `README.md` for quick start and usage. This doc covers internals, rule inven
 |------|----------|-------------|:--------:|:--------------------------:|
 | **AgentLinter** | TypeScript | `apps/agentlinter/packages/cli/src/engine/rules/*.ts` | Yes (`bun run build`) | No (some context-gated via `applicableContexts`) |
 | **PromptLint** | Python | `apps/promptlint/promptlint/analyzers/*.py` | No | No |
-| **Home-Grow** | Bash | `apps/homegrow/run.sh` (20 checks as functions) + `apps/homegrow/rules.conf` | No | Yes (`CHECK_*=0` in `rules.conf`) |
+| **Home-Grow** | Bash | `apps/homegrow/run.sh` (31 checks as functions) + `apps/homegrow/rules.conf` | No | Yes (`CHECK_*=0` in `rules.conf`) |
 | **Prompt Hardener** | Python | `apps/prompt-hardener/src/prompt_hardener/evaluate.py` | No | Yes (`apply_techniques` list) |
 
 ---
@@ -81,7 +81,7 @@ Each analyzer = Python class in `apps/promptlint/promptlint/analyzers/`. Returns
 | Security | `security.py` | Injection patterns: 6 high-risk (-3.0 each), 3 medium-risk (-0.5 each). Skips lines with restriction language (defensive instructions). Removed: placeholder/template variable FPs, dead low-risk patterns |
 | Cost | `cost.py` | Token count vs TOKEN_BUDGET_GUIDE.md thresholds: reasonable (1725), moderate/WARN (2588), high/system-base (4865), very-high/system-WARN (7298). Variable count, instruction count |
 
-### Home-Grow — 20 checks (individually toggleable)
+### Home-Grow — 31 checks (individually toggleable)
 
 All checks live in `apps/homegrow/run.sh` as functions. Config in `apps/homegrow/rules.conf` — set any `CHECK_*=0` to disable. `megalint.sh` calls `run.sh` as a subprocess; no inlined copy.
 
@@ -108,6 +108,16 @@ All checks live in `apps/homegrow/run.sh` as functions. Config in `apps/homegrow
 | 19 | boot_conventions_ref | BOOT.md references `CONVENTIONS.md` | warn |
 | 20 | memory_surfacing | `shared/MEMORY_WORKFLOW.md` has natural surfacing guidance | warn |
 | 21 | soul_tone_calibrated | SOUL.md has calibrated tone signal (direct/warm/honest/authentic/skip filler) | warn |
+| 22 | imports_section | AGENTS.md (and TOOLS.md if tools/* imported) has `## Imports` section | error |
+| 23 | imports_valid_paths | All import paths resolve to existing directive files under shared/directives/ | error |
+| 24 | directives_exist | All 20 directive files from manifest.conf exist in shared/directives/ | error |
+| 25 | imports_completeness | Agent imports match manifest.conf requirements for its type | warn |
+| 26 | imports_no_duplication | No inline content duplicating imported directive text outside ## Imports | warn |
+| 27 | imports_boot_integration | BOOT.md references imports/directives when agent uses directive imports | warn |
+| 28 | imports_tools_dedup | TOOLS.md doesn't duplicate shared tool content from imported directives | warn |
+| 29 | imports_user_dedup | USER.md doesn't duplicate USER_CORE content | warn |
+| 30 | legacy_shared_files | Old monolithic shared files (SECURITY_RULES, MEMORY_WORKFLOW, etc.) cleaned up | warn |
+| 31 | orphan_directives | No directive files unused by any agent | info |
 
 ### Prompt Hardener — 6 default techniques, 13 sub-criteria
 
@@ -138,9 +148,9 @@ Defined in `evaluate.py`. LLM scores each 0-10 with ❌/⚠️/✅ marks. Defaul
 |------|:------:|:------------:|
 | AgentLinter | 86 | No (some context-gated via `applicableContexts`) |
 | PromptLint | ~25 sub-checks across 3 analyzers | No |
-| Home-Grow | 20 (1 superseded, 1 disabled by default) | Yes (`rules.conf`) |
+| Home-Grow | 31 (1 superseded, 1 disabled by default) | Yes (`rules.conf`) |
 | Prompt Hardener | 13 default sub-criteria across 6 techniques (+5 optional) | Yes (`apply_techniques`) |
-| **Total** | **~144** | **Home-Grow + Hardener** |
+| **Total** | **~155** | **Home-Grow + Hardener** |
 
 ---
 

@@ -55,6 +55,24 @@ Each tool solves a different layer of prompt quality. No single tool covers ever
 | Boot checklist structure | | | **Yes** | |
 | Memory / session handoff | **Yes** | | | |
 | Skill safety (dangerous commands) | **Yes** | | | |
+| Directive imports (## Imports, paths, dedup, boot integration) | | | **Yes** | |
+
+### Directive import enforcement (Home-Grow)
+
+Home-Grow enforces the directive import system: agents use `## Imports` in AGENTS.md to pull shared directive files instead of inline duplication. Flags are configurable in `apps/homegrow/rules.conf`.
+
+| Rule | Flag | Severity | Description |
+|------|------|----------|-------------|
+| check_imports_section | CHECK_IMPORTS_SECTION | ERROR | AGENTS.md must have ## Imports section |
+| check_imports_valid_paths | CHECK_IMPORTS_VALID_PATHS | ERROR | All import paths resolve to directive files |
+| check_directives_exist | CHECK_DIRECTIVES_EXIST | ERROR | All 20 directive files present in shared/directives/ |
+| check_imports_completeness | CHECK_IMPORTS_COMPLETENESS | WARN | Agent imports match manifest.conf requirements |
+| check_imports_no_duplication | CHECK_IMPORTS_NO_DUPLICATION | WARN | No inline content duplicating imported directives |
+| check_imports_boot_integration | CHECK_IMPORTS_BOOT_INTEGRATION | WARN | BOOT.md references imports/directives |
+| check_imports_tools_dedup | CHECK_IMPORTS_TOOLS_DEDUP | WARN | TOOLS.md doesn't duplicate shared tool content |
+| check_imports_user_dedup | CHECK_IMPORTS_USER_DEDUP | WARN | USER.md doesn't duplicate USER_CORE content |
+| check_legacy_shared_files | CHECK_LEGACY_SHARED_FILES | WARN | Old monolithic shared files cleaned up |
+| check_orphan_directives | CHECK_ORPHAN_DIRECTIVES | INFO | No directive files unused by any agent |
 
 **In short:**
 - **AgentLinter** = ESLint for agent workspaces (structure + clarity + security rules)
@@ -217,7 +235,7 @@ dev-tools/megalint/
     promptlint/          # Python, per-file quality scoring
     prompt-hardener/     # Python, LLM-powered security testing
     homegrow/            # Bash, OpenClaw-specific consistency checks
-      run.sh             # 16 checks as functions (single source of truth)
+      run.sh             # 31 checks as functions (single source of truth)
       rules.conf         # Per-check toggles + token budget targets
   lib/                   # Extracted Python modules (testable, lintable)
     config.py            # Single source of truth for weights, grades, pricing
@@ -253,7 +271,7 @@ See **[BUGS.md](BUGS.md)** for full tracker.
 
 ## Deep Dive
 
-See **[ANALYSIS.md](ANALYSIS.md)** for: per-check analysis with ratings and failure modes for all 16 Home-Grow checks and 10 Prompt Hardener sub-criteria.
+See **[ANALYSIS.md](ANALYSIS.md)** for: per-check analysis with ratings and failure modes for all 31 Home-Grow checks and 10 Prompt Hardener sub-criteria.
 
 ## Reinstalling Dependencies
 

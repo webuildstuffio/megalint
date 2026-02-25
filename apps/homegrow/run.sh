@@ -140,13 +140,18 @@ tier_threshold() {
 
 check_shared_files() {
   [[ ! -d "$SHARED_DIR" ]] && { emit WARN shared "shared/ directory not found at $SHARED_DIR — skipping shared file checks"; return; }
-  for f in AGENT_ROSTER.md SECURITY_RULES.md MEMORY_WORKFLOW.md TOOLS_GLOBAL.md CONVENTIONS.md; do
+  for f in AGENT_ROSTER.md CONVENTIONS.md; do
     if [[ -f "$SHARED_DIR/$f" ]]; then
       emit OK shared "$f exists"
     else
       emit ERROR shared "$f missing — shared config is inherited by ALL agents at boot. Missing shared files break the entire system, not just one agent"
     fi
   done
+  if [[ -d "$SHARED_DIR/directives" ]]; then
+    emit OK shared "directives/ directory exists"
+  else
+    emit ERROR shared "directives/ directory missing — agents use modular imports from directives/"
+  fi
   for userdir in nick paro; do
     if [[ -d "$SHARED_DIR/$userdir" ]]; then
       if [[ -f "$SHARED_DIR/$userdir/USER_CORE.md" ]]; then
@@ -348,7 +353,7 @@ check_heartbeat() {
     [[ ! -f "$hb" ]] && continue
     if rg -q '^CONTRACT:' "$hb" 2>/dev/null; then
       local task_lines
-      task_lines=$(rg -c '^- ' "$hb" 2>/dev/null || echo 0)
+      task_lines=$(rg -c '^(- |\d+\. |\*\*)' "$hb" 2>/dev/null || echo 0)
       if [[ "$task_lines" -gt 0 ]]; then
         emit OK "$agent" "active heartbeat with $task_lines task(s)"
       else
