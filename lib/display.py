@@ -281,7 +281,6 @@ def _section_hardener(data: dict, agents: list, meta: dict) -> None:
         print(f"  {green('API key found')} — model: {model}")
         print()
         per_agent_ph = hardener.get("per_agent") or {}
-        eval_per = hardener.get("eval_per_agent") or {}
         for agent in agents:
             pa = per_agent_ph.get(agent) or {}
             tokens_in = pa.get("tokens_in", 0)

@@ -18,7 +18,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 
-from lib.config import get_pricing_for_model
+from lib.config import get_pricing_for_model  # noqa: E402
 
 
 def _build_api_usage(m):

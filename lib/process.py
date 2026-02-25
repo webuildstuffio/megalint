@@ -16,7 +16,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 
-from lib.config import load_config, Config, LOAD_WEIGHTS
+from lib.config import load_config, Config, LOAD_WEIGHTS  # noqa: E402
 
 STANDARD_MD_FILES = (
     "AGENTS.md",
