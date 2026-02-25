@@ -1,4 +1,4 @@
-# tools/megalint/docs/ — Megalint Analysis & Proposals
+# dev-tools/megalint/docs/ — Megalint Analysis & Proposals
 
 Documentation for megalint rule management, audits, and proposals.
 

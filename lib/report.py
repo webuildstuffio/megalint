@@ -4,6 +4,8 @@
 Input:  JSON file with all data (--input path)
 Flags:  --format json|md|both  --output-dir path
 Output: Report file(s) written to output-dir
+
+Accepts either old format (from megalint.sh) or new summary format (from process.py).
 """
 
 import json
@@ -11,18 +13,12 @@ import os
 import re
 import sys
 
+# Ensure lib is importable when run as script
+_SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
 
-_MODEL_PRICING = {
-    "claude-haiku-4.5": {"input": 0.8, "output": 4.0},
-    "anthropic/claude-haiku-4.5": {"input": 0.8, "output": 4.0},
-    "claude-haiku-4-5": {"input": 0.8, "output": 4.0},
-    "claude-sonnet-4-5": {"input": 3.0, "output": 15.0},
-    "anthropic/claude-sonnet-4-5": {"input": 3.0, "output": 15.0},
-    "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
-    "anthropic/claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
-    "claude-opus-4-6": {"input": 5.0, "output": 25.0},
-    "anthropic/claude-opus-4-6": {"input": 5.0, "output": 25.0},
-}
+from lib.config import get_pricing_for_model
 
 
 def _build_api_usage(m):
@@ -32,7 +28,7 @@ def _build_api_usage(m):
     if tokens_in == 0 and tokens_out == 0:
         return None
     model = m.get("hardener_model", "")
-    pricing = _MODEL_PRICING.get(model, {"input": 3.0, "output": 15.0})
+    pricing = get_pricing_for_model(model)
     cost_in = (tokens_in / 1e6) * pricing["input"]
     cost_out = (tokens_out / 1e6) * pricing["output"]
     return {
@@ -47,93 +43,199 @@ def _build_api_usage(m):
     }
 
 
-def build_report_data(m):
-    """Assemble the full report dict from input metrics."""
-    agents_data = {}
-    for agent in m["agents_list"]:
-        agent = agent.strip()
-        if not agent:
-            continue
-        ad = {"agent": agent}
+def _normalize_input(m):
+    """Convert new summary format to flat format for build_report_data.
+    Returns (flat_m, agents_prebuilt, hg_checks_prebuilt).
+    New format: meta, agentlinter, promptlint, homegrow, budget, hardener, scoring.
+    """
+    if "meta" in m and "scoring" in m:
+        meta = m.get("meta", {})
+        git = meta if isinstance(meta.get("git_commit"), str) else meta.get("git", {})
+        if not isinstance(git, dict):
+            git = {}
+        scoring = m.get("scoring", {})
+        homegrow = m.get("homegrow", {})
+        agentlinter = m.get("agentlinter", {})
+        promptlint = m.get("promptlint", {})
+        hardener = m.get("hardener")
 
-        al_file = os.path.join(m["al_dir"], f"{agent}.json")
-        if os.path.exists(al_file):
-            try:
-                with open(al_file) as f:
-                    al = json.load(f)
-                ad["agentlinter"] = {
-                    "score": al.get("score", 0),
-                    "categories": {
-                        c["name"]: c["score"] for c in al.get("categories", [])
-                    },
-                    "diagnostics": [
-                        {
-                            "severity": d.get("severity"),
-                            "message": d.get("message"),
-                            "rule": d.get("rule", ""),
-                            "file": d.get("file", ""),
-                            "line": d.get("line"),
-                            "fix": d.get("fix", ""),
-                        }
-                        for d in al.get("diagnostics", [])
-                    ],
+        # Build agents_data from agentlinter.per_agent + promptlint.per_agent
+        al_per = agentlinter.get("per_agent", {})
+        pl_per = promptlint.get("per_agent", {})
+        agent_names = sorted(set(al_per.keys()) | set(pl_per.keys()))
+        if not agent_names and "agents_list" in meta:
+            agent_names = meta["agents_list"]
+
+        agents = {}
+        for name in agent_names:
+            ad = {"agent": name}
+            al_data = al_per.get(name, {})
+            ad["agentlinter"] = {
+                "score": al_data.get("score", 0),
+                "categories": al_data.get("categories", {}),
+                "diagnostics": al_data.get("diagnostics", []),
+            }
+            pl_data = pl_per.get(name, {})
+            pl_files = pl_data.get("files", {})
+            ad["promptlint"] = {
+                fname: {
+                    "clarity": fd.get("clarity", 0),
+                    "security": fd.get("security", 0),
+                    "cost_efficiency": fd.get("cost_efficiency", 0),
+                    "overall": fd.get("overall", 0),
+                    "issues": fd.get("issues", []),
                 }
-            except (json.JSONDecodeError, OSError, KeyError):
-                ad["agentlinter"] = {"score": 0, "categories": {}, "diagnostics": []}
+                for fname, fd in pl_files.items()
+            }
+            if hardener and isinstance(hardener, dict):
+                eval_per = hardener.get("eval_per_agent", {})
+                if name in eval_per:
+                    ad["prompt_hardener"] = eval_per[name]
+            agents[name] = ad
 
-        pl_dir = os.path.join(m["pl_dir"], agent)
-        if os.path.isdir(pl_dir):
-            pl_files = {}
-            for jf in sorted(os.listdir(pl_dir)):
-                if not jf.endswith(".json"):
-                    continue
+        flat = {
+            "run_id": meta.get("run_id", ""),
+            "timestamp": meta.get("timestamp", ""),
+            "git_commit": meta.get("git_commit") or git.get("commit", ""),
+            "git_branch": meta.get("git_branch") or git.get("branch", ""),
+            "git_dirty": meta.get("git_dirty", git.get("dirty", False)),
+            "git_msg": meta.get("git_msg") or git.get("message", ""),
+            "agents_list": agent_names,
+            "hardener_model": meta.get("model"),
+            "hardener_tokens_in": meta.get("hardener_tokens_in", 0),
+            "hardener_tokens_out": meta.get("hardener_tokens_out", 0),
+            "combined": scoring.get("combined", 0),
+            "grade": scoring.get("grade", "F"),
+            "passed": scoring.get("passed", False),
+            "pass_threshold": scoring.get("pass_threshold", 70),
+            "blocking_errors": scoring.get("blocking_errors", True),
+            "hg_passes": homegrow.get("passes", 0),
+            "hg_infos": homegrow.get("infos", 0),
+            "hg_warnings": homegrow.get("warnings", 0),
+            "hg_errors": homegrow.get("errors", 0),
+            "avg_pl_clarity": scoring.get("avg_pl_clarity", 0),
+            "avg_pl_security": 0,
+            "avg_pl_cost": 0,
+        }
+        flat["pillar_structure"] = scoring.get("pillar_structure", 0)
+        pq = scoring.get("pillar_quality")
+        flat["pillar_quality"] = pq if pq is not None and pq != "N/A" else None
+        flat["pillar_consistency"] = scoring.get("pillar_consistency", 0)
+        ps = scoring.get("pillar_security")
+        flat["pillar_security"] = ps if ps is not None and ps != "N/A" else None
+        pb = scoring.get("pillar_budget")
+        flat["pillar_budget"] = pb if pb is not None and pb != "N/A" else None
+        weights = scoring.get("weights", {}) or scoring.get("pillars", {})
+        if isinstance(weights, dict) and "structure" in weights:
+            flat["weight_structure"] = weights.get("structure", 25)
+            flat["weight_quality"] = weights.get("quality", 18)
+            flat["weight_consistency"] = weights.get("consistency", 22)
+            flat["weight_security"] = weights.get("security", 20)
+            flat["weight_budget"] = weights.get("budget", 15)
+        else:
+            flat["weight_structure"] = 25
+            flat["weight_quality"] = 18
+            flat["weight_consistency"] = 22
+            flat["weight_security"] = 20
+            flat["weight_budget"] = 15
+        return flat, agents, homegrow.get("checks", [])
+    return m, None, None
+
+
+def build_report_data(m):
+    """Assemble the full report dict from input metrics.
+    Accepts old format (from megalint.sh) or new summary format (from process.py).
+    """
+    m, agents_prebuilt, hg_checks_prebuilt = _normalize_input(m)
+    if agents_prebuilt is not None and hg_checks_prebuilt is not None:
+        agents_data = agents_prebuilt
+        hg_results = hg_checks_prebuilt
+    else:
+        agents_data = {}
+        for agent in m["agents_list"]:
+            agent = agent.strip()
+            if not agent:
+                continue
+            ad = {"agent": agent}
+
+            al_file = os.path.join(m["al_dir"], f"{agent}.json")
+            if os.path.exists(al_file):
                 try:
-                    with open(os.path.join(pl_dir, jf)) as f:
-                        pd = json.load(f)
-                    fname = jf.replace(".json", "")
-                    sc = pd.get("scores", {})
-                    pl_files[fname] = {
-                        "clarity": sc.get("clarity", 0),
-                        "security": sc.get("security", 0),
-                        "cost_efficiency": sc.get("cost_efficiency", 0),
-                        "overall": sc.get("overall", 0),
-                        "issues": [
+                    with open(al_file) as f:
+                        al = json.load(f)
+                    ad["agentlinter"] = {
+                        "score": al.get("score", 0),
+                        "categories": {
+                            c["name"]: c["score"] for c in al.get("categories", [])
+                        },
+                        "diagnostics": [
                             {
-                                "severity": i.get("severity", ""),
-                                "category": i.get("category", ""),
-                                "description": i.get("description", ""),
-                                "suggestion": i.get("suggestion", ""),
-                                "location": i.get("location"),
+                                "severity": d.get("severity"),
+                                "message": d.get("message"),
+                                "rule": d.get("rule", ""),
+                                "file": d.get("file", ""),
+                                "line": d.get("line"),
+                                "fix": d.get("fix", ""),
                             }
-                            for i in pd.get("issues", [])
+                            for d in al.get("diagnostics", [])
                         ],
                     }
+                except (json.JSONDecodeError, OSError, KeyError):
+                    ad["agentlinter"] = {"score": 0, "categories": {}, "diagnostics": []}
+
+            pl_dir = os.path.join(m["pl_dir"], agent)
+            if os.path.isdir(pl_dir):
+                pl_files = {}
+                for jf in sorted(os.listdir(pl_dir)):
+                    if not jf.endswith(".json"):
+                        continue
+                    try:
+                        with open(os.path.join(pl_dir, jf)) as f:
+                            pd = json.load(f)
+                        fname = jf.replace(".json", "")
+                        sc = pd.get("scores", {})
+                        pl_files[fname] = {
+                            "clarity": sc.get("clarity", 0),
+                            "security": sc.get("security", 0),
+                            "cost_efficiency": sc.get("cost_efficiency", 0),
+                            "overall": sc.get("overall", 0),
+                            "issues": [
+                                {
+                                    "severity": i.get("severity", ""),
+                                    "category": i.get("category", ""),
+                                    "description": i.get("description", ""),
+                                    "suggestion": i.get("suggestion", ""),
+                                    "location": i.get("location"),
+                                }
+                                for i in pd.get("issues", [])
+                            ],
+                        }
+                    except (json.JSONDecodeError, OSError):
+                        pass
+                ad["promptlint"] = pl_files
+
+            ph_file = os.path.join(m["ph_dir"], f"{agent}_eval.json")
+            if os.path.exists(ph_file):
+                try:
+                    with open(ph_file) as f:
+                        ad["prompt_hardener"] = json.load(f)
                 except (json.JSONDecodeError, OSError):
                     pass
-            ad["promptlint"] = pl_files
+            agents_data[agent] = ad
 
-        ph_file = os.path.join(m["ph_dir"], f"{agent}_eval.json")
-        if os.path.exists(ph_file):
-            try:
-                with open(ph_file) as f:
-                    ad["prompt_hardener"] = json.load(f)
-            except (json.JSONDecodeError, OSError):
-                pass
-        agents_data[agent] = ad
-
-    hg_results = []
-    hg_file = os.path.join(m["hg_dir"], "results.txt")
-    if os.path.exists(hg_file):
-        with open(hg_file) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                parts = line.split("|", 2)
-                if len(parts) == 3:
-                    hg_results.append(
-                        {"status": parts[0], "context": parts[1], "message": parts[2]}
-                    )
+        hg_results = []
+        hg_file = os.path.join(m["hg_dir"], "results.txt")
+        if os.path.exists(hg_file):
+            with open(hg_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    parts = line.split("|", 2)
+                    if len(parts) == 3:
+                        hg_results.append(
+                            {"status": parts[0], "context": parts[1], "message": parts[2]}
+                        )
 
     pillars = {
         "structure": {
@@ -729,7 +831,7 @@ def main():
     report = build_report_data(m)
     fmt = args["format"]
     output_dir = args["output_dir"]
-    run_id = m["run_id"]
+    run_id = m.get("run_id") or m.get("meta", {}).get("run_id", "unknown")
 
     if fmt in ("json", "both"):
         write_json(report, output_dir, run_id)

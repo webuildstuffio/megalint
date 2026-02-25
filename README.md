@@ -77,16 +77,14 @@ Each tool solves a different layer of prompt quality. No single tool covers ever
 
 ## Configuration
 
-`megalint.conf` controls weights, deductions, thresholds, and grade scale. All values are editable:
+`megalint.conf` controls weights, thresholds, and grade scale. All values are editable:
 
 ```bash
-WEIGHT_STRUCTURE=30     # AgentLinter weight
-WEIGHT_QUALITY=25       # PromptLint weight
-WEIGHT_CONSISTENCY=25   # Home-Grow weight
-WEIGHT_SECURITY=20      # Prompt Hardener weight
-
-# DEDUCT_ERROR=10       # legacy — consistency now uses percentage model
-# DEDUCT_WARNING=3      # legacy — OK=1.0 WARN=0.5 ERR=0.0 / total × 100
+WEIGHT_STRUCTURE=25     # AgentLinter — workspace structure, clarity, rules
+WEIGHT_QUALITY=18       # PromptLint — per-file clarity (0-10 scaled to 0-100)
+WEIGHT_CONSISTENCY=22   # Home-Grow — cross-agent consistency checks
+WEIGHT_SECURITY=20      # Prompt Hardener — LLM-powered injection testing
+WEIGHT_BUDGET=15        # Token Budget — per-file length vs budget scoring
 
 PASS_THRESHOLD=70       # minimum score to pass
 BLOCKING_ERRORS=true    # any ERROR = fail regardless of score
@@ -96,7 +94,7 @@ CLI flags override config values for a single run.
 
 ## Output
 
-Reports are saved to `tools/megalint/.reports/` (gitignored).
+Reports are saved to `dev-tools/megalint/.reports/` (gitignored).
 
 Each run produces:
 - **Log file** — `lint-run_{commit}_{timestamp}.log` (always)
@@ -136,10 +134,11 @@ All four tools merge into a single consistent structure:
     "combined": 84.2, "grade": "B+", "passed": true,
     "pass_threshold": 70, "blocking_errors": true,
     "pillars": {
-      "structure": { "score": 84, "weight": 30, "tool": "AgentLinter" },
-      "quality": { "score": 87.3, "weight": 25, "tool": "PromptLint" },
-      "consistency": { "score": 90, "weight": 25, "tool": "Home-Grow" },
-      "security": { "score": 40, "weight": 20, "tool": "Prompt Hardener" }
+      "structure": { "score": 84, "weight": 25, "tool": "AgentLinter" },
+      "quality": { "score": 87.3, "weight": 18, "tool": "PromptLint" },
+      "consistency": { "score": 90, "weight": 22, "tool": "Home-Grow" },
+      "security": { "score": 40, "weight": 20, "tool": "Prompt Hardener" },
+      "budget": { "score": 99, "weight": 15, "tool": "Token Budget" }
     },
     "quality_detail": { "clarity": 8.2, "security": 9.5, "cost": 8.5 }
   },
@@ -165,7 +164,7 @@ Install: `brew install node ripgrep` (macOS). Missing deps fail early with clear
 ## Environment Setup
 
 ```bash
-cp tools/megalint/.env.example tools/megalint/.env
+cp dev-tools/megalint/.env.example dev-tools/megalint/.env
 # Edit .env → set ANTHROPIC_API_KEY
 ```
 
@@ -180,20 +179,21 @@ Only needed for Tool 4 (Prompt Hardener). Tools 1-3 are free and run without key
 
 ## Scoring
 
-All four tools contribute to the combined score via weighted pillars:
+All five pillars contribute to the combined score via weighted pillars:
 
 | Pillar | Tool | How | Default Weight |
 |--------|------|-----|:-:|
-| Structure | AgentLinter | Raw 0-100 score | 30% |
-| Quality | PromptLint | avg(clarity, security, cost) * 10 → 0-100 | 25% |
-| Consistency | Home-Grow | (OK×1.0 + WARN×0.5 + ERR×0.0) / total × 100 | 25% |
+| Structure | AgentLinter | Raw 0-100 score | 25% |
+| Quality | PromptLint | avg(clarity, security, cost) * 10 → 0-100 | 18% |
+| Consistency | Home-Grow | (OK×1.0 + WARN×0.5 + ERR×0.0) / total × 100 | 22% |
 | Security | Prompt Hardener | (satisfied_checks / total_checks) * 100 | 20% |
+| Token Budget | Length check | Per-file tokens vs budget (LOAD_WEIGHTS) | 15% |
 
 When a tool is skipped (e.g., Hardener without API key), its weight redistributes proportionally.
 
 **Pass/fail:** Score >= threshold (default 70) AND no blocking errors. Configurable via `megalint.conf` or CLI.
 
-**Grade scale:** S (98+), A+ (96+), A (93+), A- (90+), B+ (85+), B (80+), B- (75+), C+ (68+), C (60+), C- (55+), D (50+), F (<50)
+**Grade scale:** S (97+), A+ (95+), A (93+), A- (90+), B+ (87+), B (83+), B- (80+), C+ (77+), C (73+), C- (70+), D (60+), F (&lt;60)
 
 **Display format:** `84 (B+)` — score first, grade in brackets, used consistently everywhere.
 
@@ -209,7 +209,7 @@ All tools are cloned directly into this repo (no `.git`). Edit source directly:
 ## Directory Layout
 
 ```
-tools/megalint/
+dev-tools/megalint/
   megalint.sh            # Unified runner (all 4 tools)
   megalint.conf          # Scoring weights, thresholds, grade scale
   apps/                  # Self-contained tool apps
@@ -220,8 +220,13 @@ tools/megalint/
       run.sh             # 16 checks as functions (single source of truth)
       rules.conf         # Per-check toggles + token budget targets
   lib/                   # Extracted Python modules (testable, lintable)
-    scoring.py           # 4-pillar scoring engine
+    config.py            # Single source of truth for weights, grades, pricing
+    process.py           # Tool adapters, process_all, writes summary.json
+    display.py           # Reads summary.json, prints terminal output
+    scoring.py           # 5-pillar scoring engine
     report.py            # JSON + Markdown report generator
+  tests/
+    megalint.bats        # Regression and parity tests
   .env.example           # API key template (committed)
   .env                   # Your API keys (gitignored)
   .reports/              # All output (gitignored)
@@ -231,15 +236,10 @@ tools/megalint/
 ## Tests
 
 ```bash
-# Stream A (safety): format validation, temp cleanup, no-eval parsing, wait codes
-bats tools/megalint/test_megalint.bats
-
-# Stream B (dead code): AL_CATS, PL_DETAILS, PH_SCORES removed; totals displayed
-bats tools/megalint/tests/stream_b.bats
-
-# Stream C (portability): dynamic agents, rg/node checks, REPO_ROOT
-bats tools/megalint/tests/stream_c.bats
+bats dev-tools/megalint/tests/megalint.bats
 ```
+
+Covers: help/format validation, temp cleanup, no-eval parsing, homegrow delegation, template exclusion, portability, and refactored Python libs (config, process, display).
 
 ## Status
 
@@ -247,7 +247,7 @@ bats tools/megalint/tests/stream_c.bats
 - **Stream B** (dead code): done ✅  
 - **Stream C** (portability): done ✅  
 - **Stream D1** (homegrow dedup): done ✅  
-- **D2-D7** (Python extraction): pending  
+- **D2-D7** (Python extraction): done ✅  
 
 See **[BUGS.md](BUGS.md)** for full tracker.
 
@@ -257,10 +257,10 @@ See **[ANALYSIS.md](ANALYSIS.md)** for: per-check analysis with ratings and fail
 
 ## Reinstalling Dependencies
 
-If you move or rename the `tools/megalint/` directory, recreate the Python venvs (shebangs encode absolute paths):
+If you move or rename the `dev-tools/megalint/` directory, recreate the Python venvs (shebangs encode absolute paths):
 
 ```bash
-cd tools/megalint/apps/agentlinter/packages/cli && bun install && bun run build
-cd tools/megalint/apps/promptlint && uv venv .venv && uv pip install -e . --python .venv/bin/python
-cd tools/megalint/apps/prompt-hardener && uv venv .venv && uv pip install -e . --python .venv/bin/python
+cd dev-tools/megalint/apps/agentlinter/packages/cli && bun install && bun run build
+cd dev-tools/megalint/apps/promptlint && uv venv .venv && uv pip install -e . --python .venv/bin/python
+cd dev-tools/megalint/apps/prompt-hardener && uv venv .venv && uv pip install -e . --python .venv/bin/python
 ```

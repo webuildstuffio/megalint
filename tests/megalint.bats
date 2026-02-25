@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Megalint regression tests
-# Run: bats tools/megalint/tests/megalint.bats
+# Run: bats dev-tools/megalint/tests/megalint.bats
 
 setup() {
   SCRIPT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
@@ -71,7 +71,7 @@ setup() {
 
 @test "checks.sh works from a subdirectory (not just repo root)" {
   [[ -d "$AGENTS_DIR" ]] || skip "agents dir missing"
-  cd "$REPO_ROOT/tools"
+  cd "$REPO_ROOT/dev-tools"
   run bash megalint/apps/homegrow/checks.sh
   [[ "$status" -eq 0 || "$status" -eq 1 ]]
   [[ -n "$output" ]]
@@ -83,4 +83,15 @@ setup() {
     ! grep -qE '/Users/[^/]+|/home/[^/]+' "$f"
   done
 }
+
+# ─── Refactor parity ──────────────────────────────────────────────────────────
+
+@test "refactored Python libs exist and are invoked" {
+  [[ -f "$SCRIPT_DIR/lib/process.py" ]]
+  [[ -f "$SCRIPT_DIR/lib/display.py" ]]
+  [[ -f "$SCRIPT_DIR/lib/config.py" ]]
+  grep -q 'lib/process.py' "$MEGALINT"
+  grep -q 'lib/display.py' "$MEGALINT"
+}
+
 
