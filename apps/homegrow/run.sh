@@ -58,6 +58,16 @@ CHECK_CONVENTIONS_RESOURCEFULNESS=1
 CHECK_BOOT_CONVENTIONS_REF=1
 CHECK_MEMORY_SURFACING=1
 CHECK_SOUL_TONE_CALIBRATED=1
+CHECK_IMPORTS_SECTION=1
+CHECK_IMPORTS_VALID_PATHS=1
+CHECK_DIRECTIVES_EXIST=1
+CHECK_IMPORTS_COMPLETENESS=1
+CHECK_IMPORTS_NO_DUPLICATION=1
+CHECK_IMPORTS_BOOT_INTEGRATION=1
+CHECK_IMPORTS_TOOLS_DEDUP=1
+CHECK_IMPORTS_USER_DEDUP=1
+CHECK_LEGACY_SHARED_FILES=1
+CHECK_ORPHAN_DIRECTIVES=1
 
 BUDGET_AGENTS_MD=1725
 BUDGET_SOUL_MD=525
@@ -304,10 +314,12 @@ check_security_section() {
   for agent in "${AGENTS[@]}"; do
     local f="$AGENTS_DIR/$agent/AGENTS.md"
     [[ ! -f "$f" ]] && continue
-    if rg -q 'SECURITY_RULES.md' "$f" 2>/dev/null || rg -qi '^##.*security' "$f" 2>/dev/null; then
-      emit OK "$agent" "AGENTS.md has security section"
+    if rg -q 'security/hostile-content' "$f" 2>/dev/null; then
+      emit OK "$agent" "AGENTS.md imports security directives"
+    elif rg -q 'SECURITY_RULES.md' "$f" 2>/dev/null || rg -qi '^##.*security' "$f" 2>/dev/null; then
+      emit OK "$agent" "AGENTS.md has security section (legacy format)"
     else
-      emit WARN "$agent" "AGENTS.md missing security section. Agents process untrusted input (forwarded messages, URLs) — without security guidance they have no injection defense. Reference shared/SECURITY_RULES.md or add ## Security"
+      emit WARN "$agent" "AGENTS.md missing security — import security/hostile-content + security/no-exfiltrate in ## Imports"
     fi
   done
 }
@@ -318,10 +330,12 @@ check_memory_workflow() {
   for agent in "${AGENTS[@]}"; do
     local f="$AGENTS_DIR/$agent/AGENTS.md"
     [[ ! -f "$f" ]] && continue
-    if rg -q 'MEMORY_WORKFLOW' "$f" 2>/dev/null || rg -qi '^##.*memory' "$f" 2>/dev/null; then
-      emit OK "$agent" "AGENTS.md has memory workflow"
+    if rg -q 'memory/workflow' "$f" 2>/dev/null; then
+      emit OK "$agent" "AGENTS.md imports memory workflow directive"
+    elif rg -q 'MEMORY_WORKFLOW' "$f" 2>/dev/null || rg -qi '^##.*memory' "$f" 2>/dev/null; then
+      emit OK "$agent" "AGENTS.md has memory workflow (legacy format)"
     else
-      emit WARN "$agent" "AGENTS.md missing memory workflow — without this, the agent can store memories but doesn't know HOW to surface them naturally. See docs/MASTER_SUMMARY.md #7"
+      emit WARN "$agent" "AGENTS.md missing memory workflow — import memory/workflow in ## Imports"
     fi
   done
 }
@@ -454,28 +468,29 @@ check_action_tiers_strict() {
   done
 }
 
-# ─── 18. CONVENTIONS.md has resourcefulness directive ─────────────────────────
+# ─── 18. Resourcefulness directive exists ─────────────────────────────────────
 
 check_conventions_resourcefulness() {
-  local f="$SHARED_DIR/CONVENTIONS.md"
-  [[ ! -f "$f" ]] && return
-  if rg -qi '(figure.it.out|exhaust.*(option|approach)|partial.completion|try.before.ask|don.t ask.*(clarif|permiss)|resourceful|solve.*without.*asking|try.*first.*before|independent.*problem.solv|autonomous)' "$f" 2>/dev/null; then
-    emit OK shared "CONVENTIONS.md has resourcefulness directive"
+  local f="$SHARED_DIR/directives/ops/figure-it-out.md"
+  if [[ -f "$f" ]]; then
+    emit OK shared "directives/ops/figure-it-out.md exists (resourcefulness directive)"
   else
-    emit WARN shared "CONVENTIONS.md missing resourcefulness / 'figure it out' directive. This is the #1 universal finding across all 27+ industry prompts reviewed — every agentic company (OpenAI, Anthropic, Perplexity, Notion) demands agents act first and ask never. Without this in shared conventions, 6 of 7 agents have no mandate to exhaust approaches before asking. See docs/MASTER_SUMMARY.md #1, docs/AGI_FOCUSED_AUDIT.md §II Theme 1"
+    emit WARN shared "directives/ops/figure-it-out.md missing — resourcefulness / 'figure it out' directive. This is the #1 universal finding across all 27+ industry prompts reviewed — every agentic company (OpenAI, Anthropic, Perplexity, Notion) demands agents act first and ask never. Without this, agents have no mandate to exhaust approaches before asking. See docs/MASTER_SUMMARY.md #1, docs/AGI_FOCUSED_AUDIT.md §II Theme 1"
   fi
 }
 
-# ─── 19. BOOT.md references CONVENTIONS.md ────────────────────────────────────
+# ─── 19. BOOT.md references CONVENTIONS.md or imports/directives ─────────────
 
 check_boot_conventions_ref() {
   for agent in "${AGENTS[@]}"; do
     local boot="$AGENTS_DIR/$agent/BOOT.md"
     [[ ! -f "$boot" ]] && continue
-    if rg -q 'CONVENTIONS.md' "$boot" 2>/dev/null; then
+    if rg -qi 'CONVENTIONS' "$boot" 2>/dev/null; then
       emit OK "$agent" "BOOT.md refs CONVENTIONS.md"
+    elif rg -qi '(import|directive)' "$boot" 2>/dev/null; then
+      emit OK "$agent" "BOOT.md refs imports/directives (replaces CONVENTIONS.md)"
     else
-      emit WARN "$agent" "BOOT.md missing CONVENTIONS.md reference. CONVENTIONS.md is the most critical shared file — it's the law all agents inherit. Without loading it at boot, the agent misses all shared behavioral directives (resourcefulness, self-healing, communication laws). See docs/AGI_FOCUSED_AUDIT.md §IV Rules Tier 1 Rule 4"
+      emit WARN "$agent" "BOOT.md missing CONVENTIONS.md or imports/directives reference"
     fi
   done
 }
@@ -506,6 +521,311 @@ check_soul_tone_calibrated() {
   done
 }
 
+# ─── 22. Imports section exists in AGENTS.md ─────────────────────────────────
+
+check_imports_section() {
+  for agent in "${AGENTS[@]}"; do
+    local f="$AGENTS_DIR/$agent/AGENTS.md"
+    [[ ! -f "$f" ]] && continue
+    if rg -q '^## Imports' "$f" 2>/dev/null; then
+      local import_count
+      import_count=$(rg -c '^\- .*/.*' "$f" 2>/dev/null || echo 0)
+      if [[ "$import_count" -gt 0 ]]; then
+        emit OK "$agent" "AGENTS.md has ## Imports with $import_count directives"
+      else
+        emit WARN "$agent" "AGENTS.md has ## Imports section but no directive paths listed"
+      fi
+    else
+      emit ERROR "$agent" "AGENTS.md missing ## Imports section — directives define the agent's behavioral stack (security, memory, operations, behavior). Without imports, every directive must be duplicated inline, wasting tokens and causing drift"
+    fi
+  done
+}
+
+# ─── 23. Import paths resolve to existing directive files ────────────────────
+
+check_imports_valid_paths() {
+  for agent in "${AGENTS[@]}"; do
+    local f="$AGENTS_DIR/$agent/AGENTS.md"
+    [[ ! -f "$f" ]] && continue
+    local in_imports=0 bad=0 total=0
+    while IFS= read -r line; do
+      [[ "$line" =~ ^'## Imports' ]] && { in_imports=1; continue; }
+      [[ "$in_imports" -eq 1 && "$line" =~ ^'## ' && ! "$line" =~ ^'### ' ]] && break
+      [[ "$in_imports" -eq 0 ]] && continue
+      if [[ "$line" =~ ^'- '(.+/.+) ]]; then
+        local path="${BASH_REMATCH[1]}"
+        path="${path%.md}"
+        ((total++))
+        if [[ ! -f "$SHARED_DIR/directives/${path}.md" ]]; then
+          emit ERROR "$agent" "import '$path' not found — expected $SHARED_DIR/directives/${path}.md"
+          ((bad++))
+        fi
+      fi
+    done < "$f"
+    [[ "$bad" -eq 0 && "$total" -gt 0 ]] && emit OK "$agent" "all $total import paths resolve"
+  done
+}
+
+# ─── 24. Directive files exist in shared/directives/ ─────────────────────────
+
+check_directives_exist() {
+  local expected_files=(
+    boot/session-start.md
+    security/hostile-content.md security/no-exfiltrate.md
+    security/defensive-ops.md security/control-plane.md
+    memory/workflow.md memory/write-it-down.md memory/surfacing.md
+    ops/figure-it-out.md ops/heartbeat-contract.md ops/todo-kanban.md
+    ops/agent-routing.md ops/agent-comms.md
+    behavior/confidence-calibration.md behavior/read-between-lines.md
+    behavior/no-hedging.md
+    tools/shell.md tools/browser.md tools/search-first.md
+    tools/platform-telegram.md tools/platform-discord.md
+    tools/platform-whatsapp.md
+  )
+  local dir_base="$SHARED_DIR/directives"
+  [[ ! -d "$dir_base" ]] && { emit ERROR shared "directives/ directory missing at $dir_base"; return; }
+  local missing=0
+  for f in "${expected_files[@]}"; do
+    if [[ ! -f "$dir_base/$f" ]]; then
+      emit ERROR shared "directives/$f missing — agents importing this directive will fail"
+      ((missing++))
+    fi
+  done
+  [[ "$missing" -eq 0 ]] && emit OK shared "all 20 directive files present"
+}
+
+# ─── 25. Import completeness — manifest compliance ───────────────────────────
+
+check_imports_completeness() {
+  local manifest="$SHARED_DIR/directives/manifest.conf"
+  [[ ! -f "$manifest" ]] && { emit WARN shared "directives/manifest.conf missing — cannot validate import completeness"; return; }
+
+  for agent in "${AGENTS[@]}"; do
+    local f="$AGENTS_DIR/$agent/AGENTS.md"
+    [[ ! -f "$f" ]] && continue
+
+    # Extract actual imports
+    local -a actual_imports=()
+    local in_imports=0
+    while IFS= read -r line; do
+      [[ "$line" =~ ^'## Imports' ]] && { in_imports=1; continue; }
+      [[ "$in_imports" -eq 1 && "$line" =~ ^'## ' && ! "$line" =~ ^'### ' ]] && break
+      [[ "$in_imports" -eq 0 ]] && continue
+      if [[ "$line" =~ ^'- '(.+/.+) ]]; then
+        local p="${BASH_REMATCH[1]}"
+        actual_imports+=("${p%.md}")
+      fi
+    done < "$f"
+
+    # Determine short agent name
+    local agent_short="${agent#workspace-}"
+    [[ "$agent" == "workspace" ]] && agent_short="pino"
+
+    # Extract expected imports from manifest
+    local -a expected=()
+    while IFS= read -r mline; do
+      [[ "$mline" =~ ^# ]] && continue
+      [[ -z "$mline" ]] && continue
+      local selector="${mline%%|*}" directive="${mline#*|}"
+      directive="${directive%.md}"
+      local should_include=0
+      if [[ "$selector" == "ALL" ]]; then
+        should_include=1
+      elif [[ "$selector" =~ ^ALL_EXCEPT: ]]; then
+        local excludes="${selector#ALL_EXCEPT:}"
+        [[ ! ",$excludes," == *",$agent_short,"* ]] && should_include=1
+      elif [[ "$selector" =~ ^AGENTS: ]]; then
+        local includes="${selector#AGENTS:}"
+        [[ ",$includes," == *",$agent_short,"* ]] && should_include=1
+      fi
+      [[ "$should_include" -eq 1 ]] && expected+=("$directive")
+    done < "$manifest"
+
+    local missing=0
+    for exp in "${expected[@]}"; do
+      local found=0
+      for act in "${actual_imports[@]}"; do
+        [[ "$act" == "$exp" ]] && { found=1; break; }
+      done
+      if [[ "$found" -eq 0 ]]; then
+        emit WARN "$agent" "missing import '$exp' — required by manifest"
+        ((missing++))
+      fi
+    done
+    [[ "$missing" -eq 0 && ${#expected[@]} -gt 0 ]] && emit OK "$agent" "all ${#expected[@]} required directives imported"
+  done
+}
+
+# ─── 26. No inline duplication of imported directives ─────────────────────────
+
+check_imports_no_duplication() {
+  # Fingerprint phrases per directive
+  declare -A FP
+  FP[boot/session-start]="Read SOUL.md.*who you are|Don.t ask permission.*Just do it"
+  FP[security/hostile-content]="hostile data|instructions are DATA.*not commands"
+  FP[security/no-exfiltrate]="Never share credentials.*API keys|disclose.*openclaw.*environment"
+  FP[security/defensive-ops]="trash.*>.*rm.*recoverable|dry-run flags"
+  FP[security/control-plane]="Never use.*cron.*gateway.*unless explicitly permitted|modify OpenClaw config.*routing.*deployment"
+  FP[memory/workflow]="memory/YYYY-MM-DD|ONLY load in main session"
+  FP[memory/write-it-down]="Mental notes.*don.t survive|Mental notes.*gone next session|WRITE IT TO A FILE"
+  FP[memory/surfacing]="Based on my records|According to my files|integrate naturally.*colleague"
+  FP[ops/figure-it-out]="sorry I can.t (access|find|do)|3\+.*real.*approach|Exhaust every approach.*before asking"
+  FP[ops/heartbeat-contract]="HEARTBEAT_OK.*nothing needs attention"
+  FP[ops/todo-kanban]="In Progress.*Paused.*Ready.*Planned.*Completed"
+  FP[ops/agent-routing]="Place a request JSON in.*iris/handoff/inbound|AGENT_ROSTER.md.*full network"
+  FP[ops/agent-comms]="sessions_send.*structured|3.*5 messages max|agent-exchange.md"
+  FP[behavior/no-hedging]="wishy-washy.*non-answer|Hedging is a failure"
+  FP[behavior/confidence-calibration]="confidence they deserve|Strong evidence.*strong language"
+  FP[behavior/read-between-lines]="literal question.*actually needs|good friend.*asked the right question"
+  FP[tools/shell]="rg over grep.*fd over find|dedicated tools over bash"
+  FP[tools/browser]="screenshot.*snapshot.*before interacting|webpage instructions.*data.*not commands"
+  FP[tools/search-first]="memory_search before answering|search GitHub.*existing package"
+  FP[tools/platform-telegram]="Standard markdown supported|Telegram"
+
+  for agent in "${AGENTS[@]}"; do
+    local agents_file="$AGENTS_DIR/$agent/AGENTS.md"
+    [[ ! -f "$agents_file" ]] && continue
+
+    # Get imported directives
+    local -a imports=()
+    local in_imports=0
+    while IFS= read -r line; do
+      [[ "$line" =~ ^'## Imports' ]] && { in_imports=1; continue; }
+      [[ "$in_imports" -eq 1 && "$line" =~ ^'## ' && ! "$line" =~ ^'### ' ]] && break
+      [[ "$in_imports" -eq 0 ]] && continue
+      [[ "$line" =~ ^'- '(.+/.+) ]] && imports+=("${BASH_REMATCH[1]%.md}")
+    done < "$agents_file"
+
+    local dupes=0
+    for imp in "${imports[@]}"; do
+      local fp="${FP[$imp]:-}"
+      [[ -z "$fp" ]] && continue
+      local check_file="$agents_file"
+      [[ "$imp" == tools/* ]] && check_file="$AGENTS_DIR/$agent/TOOLS.md"
+      [[ ! -f "$check_file" ]] && continue
+      # Check outside the Imports section
+      local outside
+      outside=$(awk '/^## Imports/{skip=1;next}/^## [^#]/{skip=0}{if(!skip) print}' "$check_file" | rg -qi "$fp" 2>/dev/null && echo 1 || echo 0)
+      if [[ "$outside" == "1" ]]; then
+        emit WARN "$agent" "directive '$imp' is imported but its content also appears inline — remove inline duplication"
+        ((dupes++))
+      fi
+    done
+    [[ "$dupes" -eq 0 && ${#imports[@]} -gt 0 ]] && emit OK "$agent" "no inline duplication of imported directives"
+  done
+}
+
+# ─── 27. BOOT.md references imports/directives ──────────────────────────────
+
+check_imports_boot_integration() {
+  for agent in "${AGENTS[@]}"; do
+    local boot="$AGENTS_DIR/$agent/BOOT.md"
+    [[ ! -f "$boot" ]] && continue
+    if rg -qi '(import|directive)' "$boot" 2>/dev/null; then
+      emit OK "$agent" "BOOT.md references imports/directives"
+    else
+      emit WARN "$agent" "BOOT.md doesn't mention imports or directives — agent may not read shared directive files at boot"
+    fi
+  done
+}
+
+# ─── 28. TOOLS.md doesn't duplicate shared tool directives ───────────────────
+
+check_imports_tools_dedup() {
+  local tools_global_phrases="rg over grep|trash.*>.*rm|memory_search before|don.t reinvent.*find.*adapt.*ship|free tiers.*credit card|parallelize independent"
+  local tools_nick_phrases="bun.*first resort|pnpm.*fallback|Never.*npm|uv.*Python"
+
+  for agent in "${AGENTS[@]}"; do
+    local f="$AGENTS_DIR/$agent/TOOLS.md"
+    [[ ! -f "$f" ]] && continue
+    local dupes=0
+
+    if rg -qi "$tools_global_phrases" "$f" 2>/dev/null; then
+      emit WARN "$agent" "TOOLS.md duplicates content from directives/tools/* — keep only domain-specific tool notes"
+      ((dupes++))
+    fi
+
+    if [[ -f "$SHARED_DIR/nick/TOOLS_NICK.md" ]]; then
+      if rg -qi "$tools_nick_phrases" "$f" 2>/dev/null; then
+        emit WARN "$agent" "TOOLS.md duplicates content from shared/nick/TOOLS_NICK.md"
+        ((dupes++))
+      fi
+    fi
+
+    [[ "$dupes" -eq 0 ]] && emit OK "$agent" "TOOLS.md contains only domain-specific content"
+  done
+}
+
+# ─── 29. USER.md doesn't duplicate shared USER_CORE facts ────────────────────
+
+check_imports_user_dedup() {
+  local nick_core_phrases="Senior PM.*Jobber|Ex-Shopify.*5 years|BSc International Business.*CBS|Concerta.*Bipolar|Canadian.*Danish.*citizenship"
+
+  for agent in "${AGENTS[@]}"; do
+    local f="$AGENTS_DIR/$agent/USER.md"
+    [[ ! -f "$f" ]] && continue
+
+    local agent_short="${agent#workspace-}"
+    [[ "$agent" == "workspace" ]] && agent_short="pino"
+
+    local core_phrases=""
+    case "$agent_short" in
+      pino|huberman|kodo|soren|tally|sentry|forger|iris)
+        core_phrases="$nick_core_phrases" ;;
+    esac
+
+    [[ -z "$core_phrases" ]] && continue
+
+    if rg -qi "$core_phrases" "$f" 2>/dev/null; then
+      emit WARN "$agent" "USER.md duplicates facts from shared/nick/USER_CORE.md — keep only the domain-specific lens"
+    else
+      emit OK "$agent" "USER.md contains only domain-specific user context"
+    fi
+  done
+}
+
+# ─── 30. Legacy shared files (replaced by directives/) ────────────────────────
+
+check_legacy_shared_files() {
+  local legacy=(SECURITY_RULES.md MEMORY_WORKFLOW.md TOOLS_GLOBAL.md)
+  for f in "${legacy[@]}"; do
+    if [[ -f "$SHARED_DIR/$f" ]]; then
+      emit WARN shared "$f still exists — replaced by directives/ modules. Delete after confirming all agents use imports"
+    fi
+  done
+}
+
+# ─── 31. Orphan directives (not imported by any agent) ───────────────────────
+
+check_orphan_directives() {
+  local dir_base="$SHARED_DIR/directives"
+  [[ ! -d "$dir_base" ]] && return
+
+  local -a all_imports=()
+  for agent in "${AGENTS[@]}"; do
+    local f="$AGENTS_DIR/$agent/AGENTS.md"
+    [[ ! -f "$f" ]] && continue
+    local in_imports=0
+    while IFS= read -r line; do
+      [[ "$line" =~ ^'## Imports' ]] && { in_imports=1; continue; }
+      [[ "$in_imports" -eq 1 && "$line" =~ ^'## ' && ! "$line" =~ ^'### ' ]] && break
+      [[ "$in_imports" -eq 0 ]] && continue
+      [[ "$line" =~ ^'- '(.+/.+) ]] && all_imports+=("${BASH_REMATCH[1]%.md}")
+    done < "$f"
+  done
+
+  for df in "$dir_base"/*/*.md; do
+    [[ ! -f "$df" ]] && continue
+    local rel="${df#$dir_base/}"
+    rel="${rel%.md}"
+    local imported=0
+    for imp in "${all_imports[@]}"; do
+      [[ "$imp" == "$rel" ]] && { imported=1; break; }
+    done
+    [[ "$imported" -eq 0 ]] && emit INFO shared "directives/$rel.md not imported by any agent"
+  done
+}
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Run enabled checks
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -531,3 +851,13 @@ check_soul_tone_calibrated() {
 [[ "$CHECK_BOOT_CONVENTIONS_REF" == "1" ]]     && check_boot_conventions_ref
 [[ "$CHECK_MEMORY_SURFACING" == "1" ]]         && check_memory_surfacing
 [[ "$CHECK_SOUL_TONE_CALIBRATED" == "1" ]]     && check_soul_tone_calibrated
+[[ "$CHECK_IMPORTS_SECTION" == "1" ]]          && check_imports_section
+[[ "$CHECK_IMPORTS_VALID_PATHS" == "1" ]]      && check_imports_valid_paths
+[[ "$CHECK_DIRECTIVES_EXIST" == "1" ]]         && check_directives_exist
+[[ "$CHECK_IMPORTS_COMPLETENESS" == "1" ]]     && check_imports_completeness
+[[ "$CHECK_IMPORTS_NO_DUPLICATION" == "1" ]]    && check_imports_no_duplication
+[[ "$CHECK_IMPORTS_BOOT_INTEGRATION" == "1" ]]  && check_imports_boot_integration
+[[ "$CHECK_IMPORTS_TOOLS_DEDUP" == "1" ]]       && check_imports_tools_dedup
+[[ "$CHECK_IMPORTS_USER_DEDUP" == "1" ]]        && check_imports_user_dedup
+[[ "$CHECK_LEGACY_SHARED_FILES" == "1" ]]       && check_legacy_shared_files
+[[ "$CHECK_ORPHAN_DIRECTIVES" == "1" ]]         && check_orphan_directives
