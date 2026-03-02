@@ -233,7 +233,7 @@ def process_hardener(ph_dir: str, agents: List[str], hardener_ran: bool) -> Opti
     return result
 
 
-def process_budgets(agent_dirs: Dict[str, str], config: Config) -> Dict[str, Any]:
+def process_budgets(agent_dirs: Dict[str, str], config: Config, shared_dir: str = "") -> Dict[str, Any]:
     """Compute per-file token budget scores using tiktoken_count and config.budgets."""
     result: Dict[str, Any] = {"per_agent": {}, "fleet_avg": 0.0}
 
@@ -263,7 +263,7 @@ def process_budgets(agent_dirs: Dict[str, str], config: Config) -> Dict[str, Any
             fpath = os.path.join(agent_dir, fname)
             if not os.path.exists(fpath):
                 continue
-            tokens = count_file(fpath)
+            tokens = count_file(fpath, shared_dir if shared_dir else None)
             sc = score_file(tokens, budget)
             pct = round(tokens / budget * 100) if budget > 0 else 0
             w = LOAD_WEIGHTS.get(fname, 1)
@@ -344,7 +344,8 @@ def process_all(
     agentlinter = process_agentlinter(al_dir, agents)
     promptlint = process_promptlint(pl_dir, agents)
     homegrow = process_homegrow(hg_dir)
-    budget = process_budgets(agent_dirs, config)
+    shared_dir = os.path.join(script_dir, "..", "..", "src", "shared")
+    budget = process_budgets(agent_dirs, config, shared_dir)
     hardener = process_hardener(ph_dir, agents, hardener_ran)
 
     # Build metrics for scoring

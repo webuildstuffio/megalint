@@ -116,6 +116,52 @@ estimate_tokens() {
   echo $(( (words * 13 + 9) / 10 ))
 }
 
+estimate_tokens_with_imports() {
+  local file="$1"
+  local shared_dir="$2"
+
+  # Create a temporary file to build the expanded content
+  local temp_expanded
+  temp_expanded=$(mktemp)
+
+  # Process line by line with sed and shell commands
+  while IFS= read -r line; do
+    if echo "$line" | grep -q '^@import('; then
+      # Extract import path using sed
+      import_path=$(echo "$line" | sed 's/@import(//' | sed 's/)//')
+      directive_file="$shared_dir/directives/${import_path}.md"
+
+      if [[ -f "$directive_file" ]]; then
+        # Append the directive content
+        cat "$directive_file" >> "$temp_expanded"
+        echo "" >> "$temp_expanded"
+      else
+        # Keep the original import line if directive not found
+        echo "$line" >> "$temp_expanded"
+      fi
+    else
+      # Keep the original line
+      echo "$line" >> "$temp_expanded"
+    fi
+  done < "$file"
+
+  # Count tokens in the expanded content
+  local megalint_root="${SCRIPT_DIR}/../.."
+  local py="${megalint_root}/apps/promptlint/.venv/bin/python"
+  local counter="${megalint_root}/lib/tiktoken_count.py"
+  if [[ -x "$py" && -f "$counter" ]]; then
+    local count
+    count=$("$py" "$counter" "$temp_expanded" 2>/dev/null) && [[ -n "$count" ]] && { rm "$temp_expanded"; echo "$count"; return; }
+  fi
+
+  # Fallback: word-based estimation
+  local words
+  words=$(wc -w < "$temp_expanded" 2>/dev/null | tr -d ' ')
+  rm "$temp_expanded"
+  [[ -z "$words" || "$words" -eq 0 ]] && { echo 0; return; }
+  echo $(( (words * 13 + 9) / 10 ))
+}
+
 get_budget() {
   case "$1" in
     AGENTS.md)    echo "$BUDGET_AGENTS_MD" ;;
@@ -379,6 +425,7 @@ check_heartbeat() {
 # and per-file budgets via BUDGET_*_MD or env vars MEGALINT_BUDGET_*
 
 check_token_budgets() {
+  echo "DEBUG: check_token_budgets called" >&2
   # Max severity is WARN — Token Budget pillar handles graduated scoring.
   # Blocking ERRORs are reserved for structural issues, not length.
   local budgeted_files=(AGENTS.md SOUL.md IDENTITY.md USER.md TOOLS.md HEARTBEAT.md MEMORY.md)
@@ -387,7 +434,14 @@ check_token_budgets() {
       local f="$AGENTS_DIR/$agent/$fname"
       [[ ! -f "$f" ]] && continue
       local tokens budget thr_info thr_warn
-      tokens=$(estimate_tokens "$f")
+      # Use estimate_tokens_with_imports for files that may contain @import directives
+      if [[ "$fname" == "AGENTS.md" || "$fname" == "MEMORY.md" || "$fname" == "TOOLS.md" || "$fname" == "BOOT.md" ]]; then
+        tokens=$(estimate_tokens_with_imports "$f" "$SHARED_DIR")
+        # Debug output
+        echo "DEBUG: $fname expanded tokens: $tokens" >&2
+      else
+        tokens=$(estimate_tokens "$f")
+      fi
       budget=$(get_budget "$fname")
       [[ "$budget" -eq 0 ]] && continue
       thr_info=$(tier_threshold "$budget" "$TIER_INFO")
@@ -884,6 +938,7 @@ check_todo_file() {
 [[ "$CHECK_SECURITY_SECTION" == "1" ]]  && check_security_section
 [[ "$CHECK_MEMORY_WORKFLOW" == "1" ]]   && check_memory_workflow
 [[ "$CHECK_HEARTBEAT" == "1" ]]         && check_heartbeat
+echo "DEBUG: About to check token budgets, CHECK_TOKEN_BUDGETS=$CHECK_TOKEN_BUDGETS" >&2
 [[ "$CHECK_TOKEN_BUDGETS" == "1" ]]     && check_token_budgets
 [[ "$CHECK_TIMEZONE" == "1" ]]          && check_timezone
 [[ "$CHECK_CANONICAL_WORDING" == "1" ]] && check_canonical_wording
