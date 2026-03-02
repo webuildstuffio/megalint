@@ -335,6 +335,7 @@ export const memoryRules: Rule[] = [
         /\b(don['']t|never)\s+.{0,20}(source|cite|reference)\s+.{0,20}(memory|record|log)/i,
         /\bjust\s+(know|remember)\b/i,
         /\bshared\s+understanding\b/i,
+        /@import\(memory\/surfacing\)/,
       ];
 
       const matchCount = SURFACING_PATTERNS.filter((p) => p.test(allContent)).length;

@@ -727,6 +727,7 @@ export const clarityRules: Rule[] = [
         /don['']t\s+(just\s+)?ask/i,
         /try\s+at\s+least/i,
         /resourceful/i,
+        /@import\(ops\/figure-it-out\)/,
       ];
 
       const matchCount = RESOURCEFULNESS_PATTERNS.filter((p) => p.test(allContent)).length;

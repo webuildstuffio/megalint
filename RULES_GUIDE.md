@@ -98,7 +98,7 @@ All checks live in `apps/homegrow/run.sh` as functions. Config in `apps/homegrow
 | 9 | tone_table | SOUL.md has tone calibration (Flat/Alive or tone section heading) | warn |
 | 10 | continuity_line | SOUL.md has continuity line ("wake up fresh" / "files are my memory") | warn |
 | 11 | security_section | AGENTS.md has `## Security` heading or `SECURITY_RULES.md` ref | warn |
-| 12 | memory_workflow | AGENTS.md refs `MEMORY_WORKFLOW` or has `## Memory` section | warn |
+| 12 | memory_workflow | AGENTS.md or MEMORY.md refs `memory/workflow` directive or has memory section | warn |
 | 13 | heartbeat | HEARTBEAT.md contract has task lines if active | warn |
 | 14 | token_budgets | Per-file tiktoken count vs budget targets (2-tier: INFO/WARN) | warn (disabled by default — handled by Token Budget pillar) |
 | 15 | timezone | USER.md has timezone info (word-bounded `ET`/`CT`/`PT`/`UTC`, `eastern`, `America/`, `Asia/`, `Europe/`) | warn |
@@ -108,11 +108,11 @@ All checks live in `apps/homegrow/run.sh` as functions. Config in `apps/homegrow
 | 19 | boot_conventions_ref | BOOT.md references `CONVENTIONS.md` | warn |
 | 20 | memory_surfacing | `shared/MEMORY_WORKFLOW.md` has natural surfacing guidance | warn |
 | 21 | soul_tone_calibrated | SOUL.md has calibrated tone signal (direct/warm/honest/authentic/skip filler) | warn |
-| 22 | imports_section | AGENTS.md (and TOOLS.md if tools/* imported) has `## Imports` section | error |
+| 22 | imports_section | AGENTS.md has `## Directives` section; scans all 6 config files (AGENTS.md, SOUL.md, TOOLS.md, HEARTBEAT.md, MEMORY.md, BOOT.md) for @import lines | error |
 | 23 | imports_valid_paths | All import paths resolve to existing directive files under shared/directives/ | error |
-| 24 | directives_exist | All 20 directive files from manifest.conf exist in shared/directives/ | error |
+| 24 | directives_exist | All 28 directive files from manifest.conf exist in shared/directives/ | error |
 | 25 | imports_completeness | Agent imports match manifest.conf requirements for its type | warn |
-| 26 | imports_no_duplication | No inline content duplicating imported directive text outside ## Imports | warn |
+| 26 | imports_no_duplication | No inline content duplicating imported directive text outside @import lines | warn |
 | 27 | imports_boot_integration | BOOT.md references imports/directives when agent uses directive imports | warn |
 | 28 | imports_tools_dedup | TOOLS.md doesn't duplicate shared tool content from imported directives | warn |
 | 29 | imports_user_dedup | USER.md doesn't duplicate USER_CORE content | warn |

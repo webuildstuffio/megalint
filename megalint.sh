@@ -7,7 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-AGENTS_DIR="$REPO_ROOT/src/agents-refined"
+AGENTS_DIR="$REPO_ROOT/src/agents"
 SHARED_DIR="$REPO_ROOT/src/shared"
 
 # Env overrides (highest priority)
