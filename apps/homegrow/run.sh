@@ -356,9 +356,12 @@ check_tone_table() {
 check_continuity_line() {
   for agent in "${AGENTS[@]}"; do
     local soul="$AGENTS_DIR/$agent/SOUL.md"
+    local boot="$AGENTS_DIR/$agent/BOOT.md"
     [[ ! -f "$soul" ]] && continue
     if rg -qi 'wake up fresh|files are my memory|session.*fresh|fresh.*context|these files.*memory|start.*(clean|scratch|blank)|no.*(memory|retention).*(between|across).*session|each.*(session|conversation).*new' "$soul" 2>/dev/null; then
       emit OK "$agent" "SOUL.md has continuity line"
+    elif [[ -f "$boot" ]] && rg -Fq '@import(boot/session-start)' "$boot" 2>/dev/null; then
+      emit OK "$agent" "SOUL.md continuity covered by @import(boot/session-start) in BOOT.md"
     else
       emit WARN "$agent" "SOUL.md missing continuity line. Agents wake up with zero context every session — if the agent doesn't KNOW this, it'll hallucinate continuity instead of reading its memory files. Add: 'You wake up fresh each session. Your files ARE your memory — read them.'"
     fi

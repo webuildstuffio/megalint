@@ -339,12 +339,12 @@ export const clarityRules: Rule[] = [
     check(files) {
       const diagnostics: Diagnostic[] = [];
       const ABSOLUTE_PATTERNS = /\b(never|always|must|under no circumstances|absolutely|without exception)\b/i;
-      const ESCAPE_PATTERNS = /\b(unless|except|in emergency|escalate|ask the user|if unavoidable|override|exception)\b/i;
+      const ESCAPE_PATTERNS = /\b(unless|except|in emergency|escalate|ask the user|if unavoidable|override|exception|permission|with.*consent)\b/i;
       const SECURITY_TERMS = /\b(api.?key|tokens?|secrets?|passwords?|credentials?|private.?key|leaks?|expos|file.?paths?\b.*\bexternal)/i;
       // Safety/ethical boundaries that should stay absolute
-      const SAFETY_TERMS = /\b(diagnos|therap|medical|prescri|emotion|sacred|confidential|privacy|personal.?shar|dismiss|preachy|hostile|harm|abuse|manipulat|discriminat|illegal|pushy)\b/i;
+      const SAFETY_TERMS = /\b(diagnos|therap|medical|prescri|emotion|sacred|confidential|privacy|private|personal.?shar|dismiss|preachy|hostile|harm|abuse|manipulat|discriminat|illegal|pushy)\b/i;
       // Data privacy — health data, lab results, financial data, PII boundaries should be absolute
-      const DATA_PRIVACY = /\b(health\s+(data|metric)|sensitive\s+data|deeply\s+sensitive|private\s+(data|health)|lab\s+result|medication\s+info|group\s+(chat|context)|exfiltrat|shared\s+(or\s+group\s+)?context|raw\s+(health\s+)?data|financial\s+(data|detail|info)|account\s+info|salary\s+data|tax\s+data)\b/i;
+      const DATA_PRIVACY = /\b(health\s+(data|metric)|sensitive\s+data|deeply\s+sensitive|private\s+(data|health)|lab\s+result|medication\s+info|group\s+(chat|context)|exfiltrat|shared\s+(or\s+group\s+)?context|raw\s+(health\s+)?data|financial\s+(data|detail|info)|account\s+info|salary(\s+data)?|tax\s+data|career\s+data|pipeline|load\s+MEMORY|full\s+profile|profile\s+never|delegat.*never|never.*profile)\b/i;
       // Operational best practices that are legitimately absolute
       const OPS_TERMS = /\b(screenshots?|snapshots?|timeouts?|backups?|encrypt|sanitiz|validat|authenticat)\b/i;
       // Code execution / git safety — hard boundaries that should stay absolute
@@ -353,12 +353,14 @@ export const clarityRules: Rule[] = [
       const TOOL_BAN = /\bnever\b.*\b(npm|yarn|rm\b|sudo)\b/i;
       // Action tier table rows — absolute by design
       const TIER_TABLE = /^\|\s*\*\*(Always|Never|Auto-?execute|Notify after|Ask first)\*\*/i;
+      // Tone calibration table rows — style examples inside tables are not behavioral rules
+      const TONE_TABLE_ROW = /^\|.*\*[^*]*(never|always|must)[^*]*\*.*\|/i;
       // Immigration/accuracy — verification and source-accuracy rules should be absolute
-      const ACCURACY_TERMS = /\b(visa|immigra|passport|verif|official\s+source|authoritat|outdated|conflicting?\s+(source|rule|info)|triple.?verif|source.?conflict|unofficial)\b/i;
+      const ACCURACY_TERMS = /\b(visa|immigra|passport|un?verif|verif(?:i(?:ed|es|cation))?|official\s+source|authoritat|outdated|conflicting?\s+(source|rule|info)|triple.?verif|source.?conflict|unofficial|unverified|cite\s+a\s+podcast|primary\s+source)\b/i;
       // Research agent deny-list patterns — hardened agents need absolute deny rules
       const RESEARCH_DENY = /\b(retrieved\s+content|follow\s+instructions\s+(found|embedded)|system\s+config|surface\s+to\s+(the\s+)?human|run\s+(code|shell)|execute\s+(code|command)|directly\s+interact)\b/i;
       // Platform constraints / architectural facts — not behavioral rules
-      const PLATFORM_CONSTRAINT = /\b(only\s+loads?\s+in|never\s+(in\s+)?groups?|DM\s+sessions?\s+only|platform\s+constraint|session\s+only|never\s+talk\s+to\s+(them|the\s+human|users?)\s+directly|agent[- ]facing|no\s+direct\s+(interaction|contact|access))\b/i;
+      const PLATFORM_CONSTRAINT = /\b(only\s+loads?\s+in|never\s+(in\s+)?groups?|DM\s+sessions?\s+only|platform\s+constraint|session\s+only|never\s+talk\s+to\s+(them|the\s+human|users?)\s+directly|agent[- ]facing|no\s+direct\s+(interaction|contact|access)|group\s+chat)\b/i;
       // Source handling — presenting both sides of conflicting sources is intentionally rigid
       const SOURCE_HANDLING = /\b(sources?\s+disagree|sources?\s+conflict|present\s+both|show\s+both|conflicting\s+sources?)\b/i;
       // Confirmation/attribution requirements — workflow integrity rules that should stay absolute
@@ -367,6 +369,10 @@ export const clarityRules: Rule[] = [
       const FILE_DESCRIPTION = /\b(MEMORY|TOOLS|AGENTS|SOUL|USER|IDENTITY|HEARTBEAT|BOOT|BOOTSTRAP)\.md\s*[—–-]\s*/i;
       // Data integrity / evidence-first — health and research agents need absolute data rules
       const DATA_INTEGRITY = /\b(data\s+first|evidence[- ]first|lead\s+with\s+(the\s+)?(number|data|trend)|alarm\s+on\s+trends?|never\s+on\s+noise|track\s+everything|cite\s+the\s+(mechanism|source|study))\b/i;
+      // Language policy — "English only" and similar constraints are intentional language rules
+      const LANGUAGE_POLICY = /\b(English\s+only|language\s+only|only\s+(in\s+)?English|language\s+(polic|restrict|enforc|constraint))\b/i;
+      // Personality/style descriptors in SOUL.md tone sections — not behavioral conditionals
+      const SOUL_TONE_DESCRIPTOR = /\b(wit|sass|deadpan|sarcasm|warmth|edge|honesty|humor|tone|dry\s+humor|not\s+(loud|attitude)|beneath\s+the|rooting\s+for)\b/i;
       const NARRATIVE_FILES = ["USER.md", "MEMORY.md", "BOOT.md", "IDENTITY.md", "BOOTSTRAP.md"];
       // Action tier sections are deliberately absolute — skip lines within them
       const ACTION_TIER_HEADING = /^#+\s*(always|never|auto[- ]?execute|do by default)\b/i;
@@ -396,6 +402,7 @@ export const clarityRules: Rule[] = [
           if (CODE_SAFETY.test(line)) continue;
           if (TOOL_BAN.test(line)) continue;
           if (TIER_TABLE.test(line.trim())) continue;
+          if (TONE_TABLE_ROW.test(line)) continue;
           if (ACCURACY_TERMS.test(line)) continue;
           if (RESEARCH_DENY.test(line)) continue;
           if (PLATFORM_CONSTRAINT.test(line)) continue;
@@ -403,6 +410,8 @@ export const clarityRules: Rule[] = [
           if (WORKFLOW_INTEGRITY.test(line)) continue;
           if (DATA_INTEGRITY.test(line)) continue;
           if (FILE_DESCRIPTION.test(line)) continue;
+          if (LANGUAGE_POLICY.test(line)) continue;
+          if (file.name === "SOUL.md" && SOUL_TONE_DESCRIPTOR.test(line)) continue;
           // Check 3-line window for escape hatch
           const window = file.lines.slice(i, i + 4).join(" ");
           if (!ESCAPE_PATTERNS.test(window)) {

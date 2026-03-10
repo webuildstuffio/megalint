@@ -288,16 +288,49 @@ export const clarityRules: Rule[] = [
       const diagnostics: Diagnostic[] = [];
       const ABSOLUTE_PATTERNS = /\b(never|always|must|under no circumstances|absolutely|without exception)\b/i;
       const ESCAPE_PATTERNS = /\b(unless|except|in emergency|escalate|ask the user|if unavoidable|override|exception)\b/i;
-      const SECURITY_TERMS = /\b(api.?key|token|secret|password|credential|private.?key|leak|expose)\b/i;
+      const SECURITY_TERMS = /\b(api.?key|tokens?|secrets?|passwords?|credentials?|private.?key|leaks?|expos|file.?paths?\b.*\bexternal)/i;
+      const SAFETY_TERMS = /\b(diagnos|therap|medical|prescri|emotion|sacred|confidential|privacy|private|personal.?shar|dismiss|preachy|hostile|harm|abuse|manipulat|discriminat|illegal|pushy)\b/i;
+      const DATA_PRIVACY = /\b(health\s+(data|metric)|sensitive\s+data|deeply\s+sensitive|private\s+(data|health)|lab\s+result|medication\s+info|group\s+(chat|context)|exfiltrat|salary(\s+data)?|tax\s+data|career\s+data|pipeline|load\s+MEMORY)\b/i;
+      const OPS_TERMS = /\b(screenshots?|snapshots?|timeouts?|backups?|encrypt|sanitiz|validat|authenticat)\b/i;
+      const CODE_SAFETY = /\b(push.to.main|force.?push|control.?plane|curl\s*\|?\s*bash|destructi|bypass|branch.protect|cron|gateway|untrusted|handoff)\b/i;
+      const TIER_TABLE = /^\|\s*\*\*(Always|Never|Auto-?execute|Notify after|Ask first)\*\*/i;
+      const TONE_TABLE_ROW = /^\|.*\*[^*]*(never|always|must)[^*]*\*.*\|/i;
+      const ACCURACY_TERMS = /\b(visa|immigra|passport|un?verif|verif(?:i(?:ed|es|cation))?|official\s+source|authoritat|outdated|unverified|cite\s+a\s+podcast|primary\s+source)\b/i;
+      const RESEARCH_DENY = /\b(retrieved\s+content|follow\s+instructions\s+(found|embedded)|system\s+config|surface\s+to\s+(the\s+)?human|run\s+(code|shell)|execute\s+(code|command))\b/i;
+      const PLATFORM_CONSTRAINT = /\b(only\s+loads?\s+in|never\s+(in\s+)?groups?|DM\s+sessions?\s+only|platform\s+constraint|group\s+chat|agent[- ]facing)\b/i;
+      const DATA_INTEGRITY = /\b(data\s+first|evidence[- ]first|lead\s+with\s+(the\s+)?(number|data|trend)|cite\s+the\s+(mechanism|source|study))\b/i;
+      const LANGUAGE_POLICY = /\b(English\s+only|language\s+only|only\s+(in\s+)?English|language\s+(polic|restrict|enforc|constraint))\b/i;
+      const SOUL_TONE_DESCRIPTOR = /\b(wit|sass|deadpan|sarcasm|warmth|edge|honesty|humor|tone|dry\s+humor|not\s+(loud|attitude)|beneath\s+the|rooting\s+for)\b/i;
+      const NARRATIVE_FILES = ["USER.md", "MEMORY.md", "BOOT.md", "IDENTITY.md", "BOOTSTRAP.md"];
+      const ACTION_TIER_HEADING = /^#+\s*(always|never|auto[- ]?execute|do by default)\b/i;
+      const ANY_HEADING = /^#+\s/;
       const coreFiles = files.filter(
-        (f) => !f.name.startsWith("compound/") && !f.name.startsWith("memory/") && f.name.endsWith(".md")
+        (f) => !f.name.startsWith("compound/") && !f.name.startsWith("memory/") && f.name.endsWith(".md") && !NARRATIVE_FILES.includes(f.name)
       );
       for (const file of coreFiles) {
+        let inActionTierSection = false;
         for (let i = 0; i < file.lines.length; i++) {
           const line = file.lines[i];
+          if (ANY_HEADING.test(line)) {
+            inActionTierSection = ACTION_TIER_HEADING.test(line);
+          }
+          if (inActionTierSection) continue;
           if (!ABSOLUTE_PATTERNS.test(line)) continue;
-          // Skip security rules — absolute is correct there
+          if (/^\s*#+\s/.test(line)) continue;
+          if (line.trim().endsWith("?")) continue;
           if (SECURITY_TERMS.test(line)) continue;
+          if (SAFETY_TERMS.test(line)) continue;
+          if (DATA_PRIVACY.test(line)) continue;
+          if (OPS_TERMS.test(line)) continue;
+          if (CODE_SAFETY.test(line)) continue;
+          if (TIER_TABLE.test(line.trim())) continue;
+          if (TONE_TABLE_ROW.test(line)) continue;
+          if (ACCURACY_TERMS.test(line)) continue;
+          if (RESEARCH_DENY.test(line)) continue;
+          if (PLATFORM_CONSTRAINT.test(line)) continue;
+          if (DATA_INTEGRITY.test(line)) continue;
+          if (LANGUAGE_POLICY.test(line)) continue;
+          if (file.name === "SOUL.md" && SOUL_TONE_DESCRIPTOR.test(line)) continue;
           // Check 3-line window for escape hatch
           const window = file.lines.slice(i, i + 4).join(" ");
           if (!ESCAPE_PATTERNS.test(window)) {
