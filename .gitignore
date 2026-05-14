@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+.next/
+.turbo/
+out/
+dist/
+build/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Reports (generated at runtime)
+.reports/
+
+# Environment files
+.env
+.env.backup
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Lock files (keep bun.lock, remove npm)
+package-lock.json
