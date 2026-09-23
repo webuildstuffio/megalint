@@ -1,0 +1,7 @@
+# Shared supply-chain policy — webuildstuffio org standard
+# minimumReleaseAge: ignore package versions published less than 5 days ago.
+# This is the automated npm-poison window: fresh releases (where supply-chain
+# attacks live) are skipped at install time, no manual review timing needed.
+# 5 days = 432000 seconds. Applies to bun install in every repo with this file.
+[install]
+minimumReleaseAge = 432000

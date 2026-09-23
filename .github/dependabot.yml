@@ -1,0 +1,151 @@
+---
+# webuildstuffio org standard — megalint monorepo
+# bun: apps/agentlinter + nested apps/agentlinter/packages/cli (independent, not a workspace)
+# pip: apps/prompt-hardener, apps/promptlint (pyproject.toml)
+# Policy: 5-day poison window enforced via bunfig.toml minimumReleaseAge
+# NOTE: dependency-type omitted = includes all types (dev + prod).
+version: 2
+updates:
+  - package-ecosystem: "bun"
+    directory: "/apps/agentlinter"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "05:00"
+    versioning-strategy: increase-if-necessary
+    open-pull-requests-limit: 10
+    rebase-strategy: "auto"
+    groups:
+      all-dependencies:
+        update-types:
+          - "minor"
+          - "patch"
+        patterns:
+          - "*"
+      major-updates:
+        update-types:
+          - "major"
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "bun"
+      - "monthly-update"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+  - package-ecosystem: "bun"
+    directory: "/apps/agentlinter/packages/cli"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "05:00"
+    versioning-strategy: increase-if-necessary
+    open-pull-requests-limit: 10
+    rebase-strategy: "auto"
+    groups:
+      all-dependencies:
+        update-types:
+          - "minor"
+          - "patch"
+        patterns:
+          - "*"
+      major-updates:
+        update-types:
+          - "major"
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "bun"
+      - "monthly-update"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+  - package-ecosystem: "pip"
+    directory: "/apps/prompt-hardener"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "05:00"
+    versioning-strategy: increase-if-necessary
+    open-pull-requests-limit: 10
+    rebase-strategy: "auto"
+    groups:
+      all-dependencies:
+        update-types:
+          - "minor"
+          - "patch"
+        patterns:
+          - "*"
+      major-updates:
+        update-types:
+          - "major"
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "pip"
+      - "monthly-update"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+  - package-ecosystem: "pip"
+    directory: "/apps/promptlint"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "05:00"
+    versioning-strategy: increase-if-necessary
+    open-pull-requests-limit: 10
+    rebase-strategy: "auto"
+    groups:
+      all-dependencies:
+        update-types:
+          - "minor"
+          - "patch"
+        patterns:
+          - "*"
+      major-updates:
+        update-types:
+          - "major"
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "pip"
+      - "monthly-update"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "05:00"
+    rebase-strategy: "auto"
+    open-pull-requests-limit: 10
+    groups:
+      actions-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+        patterns:
+          - "*"
+      actions-major:
+        update-types:
+          - "major"
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "monthly-update"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
