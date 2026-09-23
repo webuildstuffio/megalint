@@ -10,14 +10,14 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "Apache 2.0" }
 dependencies = [
-  "requests==2.33.0",
+  "requests==2.34.2",
   "openai==2.14.0",
   "argparse==1.4.0",
-  "ruff==0.14.10",
-  "gradio==6.15.1",
+  "ruff==0.16.8",
+  "gradio==6.28.0",
   "anthropic==0.75.0",
-  "boto3==1.42.22",
-  "pytest==9.0.3"
+  "boto3==1.43.98",
+  "pytest==9.1.1"
 ]
 
 [project.scripts]
