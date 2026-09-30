@@ -34,3 +34,6 @@ Thumbs.db
 
 # Lock files (keep bun.lock, remove npm)
 package-lock.json
+
+# Bun lock
+bun.lock

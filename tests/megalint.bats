@@ -133,3 +133,32 @@ setup() {
   [[ -f "$SCRIPT_DIR/apps/homegrow/prompts.sh" ]]
   grep -q 'prompts.sh' "$SCRIPT_DIR/apps/homegrow/run.sh"
 }
+
+# ─── Web / MCP / CI ──────────────────────────────────────────────────────────
+
+@test "web dashboard files exist" {
+  [[ -f "$SCRIPT_DIR/web/server.ts" ]]
+  [[ -f "$SCRIPT_DIR/web/dashboard.html" ]]
+}
+
+@test "mcp server file exists" {
+  [[ -f "$SCRIPT_DIR/mcp/server.ts" ]]
+}
+
+@test "ci action file exists and is valid YAML" {
+  [[ -f "$SCRIPT_DIR/ci/action.yml" ]]
+  python3 -c "import yaml; yaml.safe_load(open('$SCRIPT_DIR/ci/action.yml'))" 2>/dev/null || \
+  python3 -c "
+import re
+with open('$SCRIPT_DIR/ci/action.yml') as f:
+    content = f.read()
+assert 'name: megalint' in content
+assert 'inputs:' in content
+assert 'outputs:' in content
+"
+}
+
+@test "megalint --serve flag is in help" {
+  run "$MEGALINT" --help
+  [[ "$output" == *"--serve"* ]]
+}

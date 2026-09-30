@@ -1,0 +1,27 @@
+# Example: Add this to .github/workflows/megalint.yml in your repo
+# Runs megalint on PRs that touch skill or prompt files.
+
+name: megalint
+on:
+  pull_request:
+    paths:
+      - '**/*.md'
+      - '.cursor/skills/**'
+      - '.claude/skills/**'
+      - '.agents/skills/**'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: webuildstuffio/megalint@main
+        with:
+          path: .cursor/skills    # or: path/to/prompts, path/to/agents
+          mode: skills            # auto, skills, prompts, agents
+          preset: balanced        # strict, balanced, minimal
+          fail-on-error: true
+          pass-threshold: 70
+          comment: true           # posts results as PR comment
+          # anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}  # optional: enables Prompt Hardener

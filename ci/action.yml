@@ -1,0 +1,215 @@
+name: megalint
+description: "AI prompt, skill, and agent linter — run convention checks, score, and report"
+author: webuildstuffio
+branding:
+  icon: check-circle
+  color: purple
+
+inputs:
+  path:
+    description: "Path to lint (skill directory, prompt file, or parent dir)"
+    required: true
+  mode:
+    description: "Lint mode: auto, skills, prompts, agents"
+    default: "auto"
+  preset:
+    description: "Rule preset: strict, balanced, minimal (optional)"
+    default: ""
+  disable-rules:
+    description: "Comma-separated rule IDs to disable"
+    default: ""
+  fail-on-error:
+    description: "Fail the step if any ERROR-severity rule triggers"
+    default: "true"
+  pass-threshold:
+    description: "Minimum combined score to pass (0-100)"
+    default: "70"
+  quiet:
+    description: "Suppress OK/INFO output"
+    default: "false"
+  format:
+    description: "Report format: json, md, both (uploaded as artifact)"
+    default: "json"
+  anthropic-api-key:
+    description: "Anthropic API key for Prompt Hardener (optional)"
+    default: ""
+  comment:
+    description: "Post results as PR comment (requires GITHUB_TOKEN)"
+    default: "true"
+
+outputs:
+  score:
+    description: "Combined score (0-100)"
+    value: ${{ steps.lint.outputs.score }}
+  grade:
+    description: "Letter grade"
+    value: ${{ steps.lint.outputs.grade }}
+  passed:
+    description: "Whether the score met the threshold"
+    value: ${{ steps.lint.outputs.passed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup megalint
+      shell: bash
+      run: |
+        # Clone megalint if not already present
+        if [[ ! -f "${{ github.action_path }}/../megalint.sh" ]]; then
+          echo "::group::Setup megalint"
+          git clone --depth 1 https://github.com/webuildstuffio/megalint.git /tmp/megalint
+          MEGALINT_DIR=/tmp/megalint
+          echo "::endgroup::"
+        else
+          MEGALINT_DIR="${{ github.action_path }}/.."
+        fi
+        echo "MEGALINT_DIR=$MEGALINT_DIR" >> "$GITHUB_ENV"
+
+    - name: Setup Node (for AgentLinter)
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+
+    - name: Setup Python (for scoring)
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        echo "::group::Install AgentLinter"
+        cd "$MEGALINT_DIR/apps/agentlinter"
+        if [[ -f package.json ]]; then
+          npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts 2>/dev/null || true
+        fi
+        echo "::endgroup::"
+        echo "::group::Install PromptLint"
+        cd "$MEGALINT_DIR/apps/promptlint"
+        if [[ -f requirements.txt ]]; then
+          pip install -q -r requirements.txt 2>/dev/null || true
+        fi
+        echo "::endgroup::"
+
+    - name: Run megalint
+      id: lint
+      shell: bash
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+      run: |
+        set +e
+        ARGS=()
+
+        [[ "${{ inputs.mode }}" != "auto" ]] && ARGS+=(--mode "${{ inputs.mode }}")
+        [[ -n "${{ inputs.preset }}" ]] && ARGS+=(--preset "${{ inputs.preset }}")
+        [[ -n "${{ inputs.disable-rules }}" ]] && ARGS+=(--disable-rule "${{ inputs.disable-rules }}")
+        [[ "${{ inputs.quiet }}" == "true" ]] && ARGS+=(--quiet)
+        [[ -n "${{ inputs.format }}" ]] && ARGS+=(--format "${{ inputs.format }}")
+        ARGS+=(--pass-threshold "${{ inputs.pass-threshold }}")
+
+        if [[ "${{ inputs.fail-on-error }}" != "true" ]]; then
+          ARGS+=(--no-blocking)
+        fi
+
+        ARGS+=("${{ inputs.path }}")
+
+        echo "::group::megalint output"
+        REPORT_DIR="${{ runner.temp }}/megalint-reports"
+        mkdir -p "$REPORT_DIR"
+
+        # Run with --json to capture structured output + normal run for display
+        JSON_OUT=$("$MEGALINT_DIR/megalint.sh" --json "${ARGS[@]}" 2>/dev/null)
+        EXIT_JSON=$?
+
+        # Also run for display output
+        "$MEGALINT_DIR/megalint.sh" "${ARGS[@]}" --format "${{ inputs.format }}" 2>&1 || true
+        echo "::endgroup::"
+
+        # Parse results
+        if echo "$JSON_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('scoring',d); m=d.get('meta',d); print(f'score={round(s.get(\"combined\",d.get(\"combined\",0)))}')" 2>/dev/null; then
+          SCORE=$(echo "$JSON_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('scoring',d); print(round(s.get('combined',d.get('combined',0))))")
+          GRADE=$(echo "$JSON_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('scoring',d); print(s.get('grade',d.get('grade','?')))")
+          PASSED=$(echo "$JSON_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); s=d.get('scoring',d); print(str(s.get('passed',d.get('passed',False))).lower())")
+        else
+          SCORE=0; GRADE="?"; PASSED="false"
+        fi
+
+        echo "score=$SCORE" >> "$GITHUB_OUTPUT"
+        echo "grade=$GRADE" >> "$GITHUB_OUTPUT"
+        echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+
+        # Save JSON for artifact
+        echo "$JSON_OUT" > "$REPORT_DIR/megalint-results.json"
+
+        # Determine exit code
+        if [[ "${{ inputs.fail-on-error }}" == "true" && "$PASSED" == "false" ]]; then
+          echo "::error::megalint: score $SCORE ($GRADE) below threshold ${{ inputs.pass-threshold }}"
+          exit 1
+        fi
+
+    - name: Upload reports
+      if: always() && inputs.format != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: megalint-reports
+        path: ${{ runner.temp }}/megalint-reports/
+        retention-days: 30
+
+    - name: Comment on PR
+      if: always() && inputs.comment == 'true' && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const score = '${{ steps.lint.outputs.score }}';
+          const grade = '${{ steps.lint.outputs.grade }}';
+          const passed = '${{ steps.lint.outputs.passed }}' === 'true';
+          const icon = passed ? '✅' : '❌';
+          const color = parseInt(score) >= 90 ? '🟢' : parseInt(score) >= 70 ? '🟡' : '🔴';
+
+          const body = [
+            `## ${icon} megalint — ${score}/100 (${grade})`,
+            '',
+            `| Metric | Value |`,
+            `|--------|-------|`,
+            `| Score | ${color} **${score}**/100 |`,
+            `| Grade | **${grade}** |`,
+            `| Status | ${passed ? '✅ Pass' : '❌ Fail'} |`,
+            `| Threshold | ${${{ inputs.pass-threshold }}} |`,
+            `| Mode | ${{ inputs.mode }} |`,
+            `| Preset | ${{ inputs.preset || 'none' }} |`,
+            '',
+            '<details><summary>How to fix</summary>',
+            '',
+            '```bash',
+            '# Run locally:',
+            `./megalint.sh --mode ${{ inputs.mode }} ${{ inputs.path }}`,
+            '',
+            '# List rules:',
+            './megalint.sh --list-rules',
+            '```',
+            '</details>',
+          ].join('\n');
+
+          // Find existing comment
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          const existing = comments.find(c => c.body?.includes('## ✅ megalint') || c.body?.includes('## ❌ megalint'));
+
+          if (existing) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existing.id,
+              body,
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+          }

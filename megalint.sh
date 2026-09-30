@@ -97,6 +97,11 @@ while [[ $# -gt 0 ]]; do
     --preset=*)            PRESET_FLAG="${1#*=}"; shift ;;
     --quiet|-q)            QUIET_FLAG=true; shift ;;
     --json)                JSON_FLAG=true; shift ;;
+    --serve)
+      SERVE_PORT="${2:-7777}"
+      [[ "$SERVE_PORT" =~ ^[0-9]+$ ]] && shift 2 || { SERVE_PORT=7777; shift; }
+      exec bun run "$SCRIPT_DIR/web/server.ts" --port "$SERVE_PORT"
+      ;;
     --config|-c)
       [[ -f "$2" ]] || { echo "Error: config file not found: $2" >&2; exit 1; }
       source "$2"; shift 2 ;;
@@ -211,6 +216,7 @@ Rule Control:
   --preset PRESET            Apply rule preset: strict, balanced, minimal
   -q, --quiet                Only show errors and warnings (suppress OK/INFO)
   --json                     Output results as JSON to stdout
+  --serve [PORT]             Start web dashboard (default: port 7777)
 
 Auto-Detection:
   If the input path (or its children) contain SKILL.md → skills mode

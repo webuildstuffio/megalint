@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>megalint — dashboard</title>
+<style>
+:root {
+  --bg: #0a0a0f; --bg2: #12121a; --bg3: #1a1a26;
+  --fg: #e4e4ef; --fg2: #9999b0; --fg3: #666680;
+  --accent: #7c6ff7; --accent2: #a78bfa;
+  --green: #22c55e; --yellow: #eab308; --red: #ef4444;
+  --orange: #f97316; --blue: #3b82f6; --cyan: #06b6d4;
+  --radius: 10px; --shadow: 0 2px 20px rgba(0,0,0,.4);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg); color: var(--fg);
+  line-height: 1.6; min-height: 100vh;
+}
+a { color: var(--accent2); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── Layout ─── */
+.shell { max-width: 1280px; margin: 0 auto; padding: 24px 20px; }
+header { display: flex; align-items: center; gap: 16px; margin-bottom: 32px; flex-wrap: wrap; }
+header h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+header h1 span { color: var(--accent); }
+header .tag { font-size: 11px; padding: 3px 10px; border-radius: 20px;
+  background: var(--bg3); color: var(--fg2); font-weight: 500; }
+.tabs { display: flex; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid var(--bg3); padding-bottom: 0; }
+.tab { padding: 10px 20px; cursor: pointer; font-size: 14px; font-weight: 500;
+  color: var(--fg2); border-bottom: 2px solid transparent; transition: all .15s; }
+.tab:hover { color: var(--fg); }
+.tab.active { color: var(--accent2); border-color: var(--accent); }
+.pane { display: none; }
+.pane.active { display: block; }
+
+/* ── Cards ─── */
+.grid { display: grid; gap: 16px; }
+.grid-3 { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.grid-2 { grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); }
+.card { background: var(--bg2); border-radius: var(--radius); padding: 20px;
+  border: 1px solid var(--bg3); }
+.card h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--fg2); text-transform: uppercase; letter-spacing: 0.5px; }
+.stat { font-size: 42px; font-weight: 700; letter-spacing: -1px; }
+.stat.green { color: var(--green); } .stat.yellow { color: var(--yellow); }
+.stat.red { color: var(--red); } .stat.blue { color: var(--blue); }
+.sub { font-size: 13px; color: var(--fg2); margin-top: 4px; }
+
+/* ── Score ring ─── */
+.ring-wrap { display: flex; align-items: center; gap: 24px; }
+.ring { position: relative; width: 120px; height: 120px; }
+.ring svg { transform: rotate(-90deg); }
+.ring-label { position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; }
+.ring-score { font-size: 32px; font-weight: 700; }
+.ring-grade { font-size: 14px; color: var(--fg2); }
+
+/* ── Pillars bar ─── */
+.pillars { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.pillar-row { display: flex; align-items: center; gap: 10px; }
+.pillar-name { width: 110px; font-size: 13px; color: var(--fg2); text-align: right; }
+.pillar-bar-bg { flex: 1; height: 8px; background: var(--bg3); border-radius: 4px; overflow: hidden; }
+.pillar-bar { height: 100%; border-radius: 4px; transition: width .6s ease; }
+.pillar-val { width: 40px; font-size: 13px; font-weight: 600; text-align: right; }
+
+/* ── Rules table ─── */
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; padding: 10px 12px; font-weight: 600; color: var(--fg2);
+  border-bottom: 1px solid var(--bg3); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+td { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.04); }
+tr:hover td { background: rgba(124,111,247,.04); }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; }
+.badge-error { background: rgba(239,68,68,.15); color: var(--red); }
+.badge-warn { background: rgba(234,179,8,.15); color: var(--yellow); }
+.badge-info { background: rgba(59,130,246,.15); color: var(--blue); }
+.badge-ok { background: rgba(34,197,94,.15); color: var(--green); }
+.badge-skills { background: rgba(124,111,247,.12); color: var(--accent2); }
+.badge-prompts { background: rgba(6,182,212,.12); color: var(--cyan); }
+
+/* ── Report list ─── */
+.report-item { display: flex; align-items: center; gap: 16px; padding: 14px 16px;
+  border-radius: 8px; cursor: pointer; transition: background .15s; }
+.report-item:hover { background: var(--bg3); }
+.report-score { font-size: 24px; font-weight: 700; width: 60px; text-align: center; }
+.report-meta { flex: 1; }
+.report-meta .title { font-size: 14px; font-weight: 500; }
+.report-meta .detail { font-size: 12px; color: var(--fg2); }
+
+/* ── Checks list ─── */
+.check { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,.03); font-size: 13px; }
+.check-icon { width: 20px; text-align: center; flex-shrink: 0; }
+.check-body { flex: 1; }
+.check-ctx { color: var(--fg2); font-size: 12px; }
+
+/* ── Lint form ─── */
+.lint-form { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+.lint-form input, .lint-form select {
+  padding: 10px 14px; background: var(--bg3); border: 1px solid rgba(255,255,255,.08);
+  border-radius: 8px; color: var(--fg); font-size: 14px; outline: none; }
+.lint-form input { flex: 1; min-width: 300px; }
+.lint-form select { min-width: 120px; }
+.btn { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer;
+  font-size: 14px; font-weight: 600; transition: all .15s; }
+.btn-primary { background: var(--accent); color: white; }
+.btn-primary:hover { background: var(--accent2); }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+pre.json { background: var(--bg3); border-radius: 8px; padding: 16px;
+  overflow-x: auto; font-size: 12px; line-height: 1.5; color: var(--fg2);
+  max-height: 600px; overflow-y: auto; }
+
+/* ── Trend chart (canvas) ─── */
+.chart-wrap { position: relative; width: 100%; height: 240px; }
+.chart-wrap canvas { width: 100%; height: 100%; }
+
+/* ── Empty state ─── */
+.empty { text-align: center; padding: 60px 20px; color: var(--fg3); }
+.empty h3 { font-size: 18px; margin-bottom: 8px; color: var(--fg2); }
+.empty code { background: var(--bg3); padding: 4px 10px; border-radius: 6px; font-size: 13px; }
+
+/* ── Toast ─── */
+.toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px;
+  background: var(--bg2); border: 1px solid var(--bg3); border-radius: 8px;
+  font-size: 13px; box-shadow: var(--shadow); opacity: 0; transform: translateY(10px);
+  transition: all .3s; pointer-events: none; z-index: 100; }
+.toast.show { opacity: 1; transform: translateY(0); }
+
+/* ── Responsive ─── */
+@media (max-width: 640px) {
+  .grid-3 { grid-template-columns: 1fr; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .ring-wrap { flex-direction: column; }
+  header h1 { font-size: 22px; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <h1>⚡ mega<span>lint</span></h1>
+    <span class="tag">v1.0</span>
+    <span class="tag" id="status-tag">loading…</span>
+    <span style="flex:1"></span>
+    <span class="tag" id="report-count">–</span>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="overview">Overview</div>
+    <div class="tab" data-tab="rules">Rules</div>
+    <div class="tab" data-tab="reports">Reports</div>
+    <div class="tab" data-tab="lint">Lint</div>
+    <div class="tab" data-tab="config">Config</div>
+  </div>
+
+  <!-- ═══ Overview ═══ -->
+  <div class="pane active" id="pane-overview">
+    <div class="grid grid-3" style="margin-bottom:24px;">
+      <div class="card">
+        <h3>Combined Score</h3>
+        <div class="ring-wrap">
+          <div class="ring">
+            <svg viewBox="0 0 120 120" width="120" height="120">
+              <circle cx="60" cy="60" r="52" fill="none" stroke="var(--bg3)" stroke-width="8"/>
+              <circle id="ring-arc" cx="60" cy="60" r="52" fill="none"
+                stroke="var(--accent)" stroke-width="8" stroke-linecap="round"
+                stroke-dasharray="326.73" stroke-dashoffset="326.73"/>
+            </svg>
+            <div class="ring-label">
+              <div class="ring-score" id="ring-score">–</div>
+              <div class="ring-grade" id="ring-grade"></div>
+            </div>
+          </div>
+          <div id="pass-badge" style="display:none;"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Convention Checks</h3>
+        <div style="display:flex;gap:20px;">
+          <div><div class="stat green" id="hg-pass">–</div><div class="sub">pass</div></div>
+          <div><div class="stat yellow" id="hg-warn">–</div><div class="sub">warn</div></div>
+          <div><div class="stat red" id="hg-err">–</div><div class="sub">error</div></div>
+        </div>
+        <div class="sub" style="margin-top:12px;" id="hg-info-line"></div>
+      </div>
+      <div class="card">
+        <h3>Latest Run</h3>
+        <div id="latest-meta" class="sub">No reports yet</div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:24px;">
+      <h3>Pillar Scores</h3>
+      <div class="pillars" id="pillars"></div>
+    </div>
+    <div class="card">
+      <h3>Score Trend</h3>
+      <div class="chart-wrap"><canvas id="trend-chart"></canvas></div>
+      <div class="sub" id="trend-info" style="margin-top:8px;text-align:center;"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Rules ═══ -->
+  <div class="pane" id="pane-rules">
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+      <input id="rule-search" placeholder="Filter rules…" style="flex:1;min-width:200px;padding:8px 14px;
+        background:var(--bg3);border:1px solid rgba(255,255,255,.08);border-radius:8px;color:var(--fg);font-size:14px;outline:none;">
+      <select id="rule-mode-filter" style="padding:8px 14px;background:var(--bg3);border:1px solid rgba(255,255,255,.08);
+        border-radius:8px;color:var(--fg);font-size:14px;">
+        <option value="">All modes</option>
+        <option value="skills">Skills</option>
+        <option value="prompts">Prompts</option>
+      </select>
+      <select id="rule-sev-filter" style="padding:8px 14px;background:var(--bg3);border:1px solid rgba(255,255,255,.08);
+        border-radius:8px;color:var(--fg);font-size:14px;">
+        <option value="">All severities</option>
+        <option value="ERROR">ERROR</option>
+        <option value="WARN">WARN</option>
+        <option value="INFO">INFO</option>
+      </select>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Rule ID</th><th>Severity</th><th>Mode</th><th>Description</th></tr></thead>
+        <tbody id="rules-tbody"></tbody>
+      </table>
+    </div>
+    <div class="sub" style="margin-top:12px;text-align:center;">
+      <span id="rule-count">23 rules</span> · Citation: <a href="https://arxiv.org/abs/2609.31575" target="_blank">arxiv 2609.31575</a> + Claude Code skill architecture
+    </div>
+  </div>
+
+  <!-- ═══ Reports ═══ -->
+  <div class="pane" id="pane-reports">
+    <div id="reports-list"></div>
+    <div id="report-detail" style="display:none;">
+      <button class="btn" onclick="showReportsList()" style="margin-bottom:16px;background:var(--bg3);color:var(--fg);">← Back</button>
+      <pre class="json" id="report-json"></pre>
+    </div>
+  </div>
+
+  <!-- ═══ Lint ═══ -->
+  <div class="pane" id="pane-lint">
+    <div class="card" style="margin-bottom:16px;">
+      <h3>Run Lint</h3>
+      <div class="lint-form">
+        <input id="lint-path" placeholder="/path/to/skills/dir or file.md">
+        <select id="lint-mode">
+          <option value="">auto</option>
+          <option value="skills">skills</option>
+          <option value="prompts">prompts</option>
+          <option value="agents">agents</option>
+        </select>
+        <select id="lint-preset">
+          <option value="">no preset</option>
+          <option value="strict">strict</option>
+          <option value="balanced">balanced</option>
+          <option value="minimal">minimal</option>
+        </select>
+        <button class="btn btn-primary" id="lint-btn" onclick="runLint()">Run</button>
+      </div>
+      <div class="sub">Runs <code>megalint.sh --json</code> and displays results below.</div>
+    </div>
+    <div id="lint-results" style="display:none;">
+      <div class="grid grid-3" style="margin-bottom:16px;" id="lint-summary-cards"></div>
+      <div class="card"><h3>Full Output</h3><pre class="json" id="lint-json"></pre></div>
+    </div>
+  </div>
+
+  <!-- ═══ Config ═══ -->
+  <div class="pane" id="pane-config">
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>Scoring Weights</h3>
+        <div id="config-weights"></div>
+      </div>
+      <div class="card">
+        <h3>Thresholds & Grades</h3>
+        <div id="config-thresholds"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <h3>Integration</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">
+        <div>
+          <div style="font-weight:600;margin-bottom:8px;">CLI</div>
+          <pre class="json" style="font-size:13px;">./megalint.sh --mode skills /path/to/skills
+./megalint.sh --json --quiet /path
+./megalint.sh --list-rules
+./megalint.sh --preset strict /path</pre>
+        </div>
+        <div>
+          <div style="font-weight:600;margin-bottom:8px;">MCP Server</div>
+          <pre class="json" style="font-size:13px;">bun run mcp/server.ts
+# or in mcp.json:
+{
+  "megalint": {
+    "command": "bun",
+    "args": ["run", "mcp/server.ts"]
+  }
+}</pre>
+        </div>
+        <div>
+          <div style="font-weight:600;margin-bottom:8px;">CI (GitHub Actions)</div>
+          <pre class="json" style="font-size:13px;">- uses: webuildstuffio/megalint@main
+  with:
+    path: ./skills
+    mode: skills
+    preset: balanced
+    fail-on-error: true</pre>
+        </div>
+        <div>
+          <div style="font-weight:600;margin-bottom:8px;">Web Dashboard</div>
+          <pre class="json" style="font-size:13px;">bun run serve
+# or
+bun run web/server.ts --port 7777</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+let rules = [], reports = [], trends = [], config = {};
+
+// ── Tab switching ───
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.pane').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('pane-' + t.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Toast ───
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ── Color helpers ───
+function scoreColor(s) {
+  if (s == null || s === 'N/A') return 'var(--fg3)';
+  const n = typeof s === 'number' ? s : parseFloat(s);
+  if (n >= 90) return 'var(--green)';
+  if (n >= 70) return 'var(--yellow)';
+  return 'var(--red)';
+}
+function sevBadge(sev) {
+  const cls = { ERROR: 'badge-error', WARN: 'badge-warn', INFO: 'badge-info', OK: 'badge-ok' }[sev] || 'badge-info';
+  return `<span class="badge ${cls}">${sev}</span>`;
+}
+
+// ── Fetch helpers ───
+async function api(path, opts) {
+  try { const r = await fetch(API + path, opts); return r.json(); }
+  catch(e) { toast('API error: ' + e.message); return null; }
+}
+
+// ── Init ───
+async function init() {
+  const [rulesData, reportsData, trendsData, latestData, configData] = await Promise.all([
+    api('/api/rules'), api('/api/reports'), api('/api/trends'),
+    api('/api/latest'), api('/api/config'),
+  ]);
+  rules = rulesData || [];
+  reports = reportsData || [];
+  trends = trendsData || [];
+  config = configData || {};
+
+  document.getElementById('status-tag').textContent = rules.length ? `${rules.length} rules loaded` : 'connected';
+  document.getElementById('report-count').textContent = `${reports.length} report${reports.length !== 1 ? 's' : ''}`;
+
+  renderRules();
+  renderConfig();
+  renderReports();
+  if (latestData && !latestData.error) renderOverview(latestData);
+  else renderEmptyOverview();
+  renderTrend();
+}
+
+// ── Overview ───
+function renderOverview(d) {
+  const meta = d.meta || d;
+  const scoring = d.scoring || d;
+  const homegrow = d.homegrow || d;
+  const combined = scoring.combined ?? d.combined ?? 0;
+  const grade = scoring.grade ?? d.grade ?? '?';
+  const passed = scoring.passed ?? d.passed;
+
+  // Ring
+  const pct = Math.min(100, Math.max(0, combined));
+  const offset = 326.73 * (1 - pct / 100);
+  const arc = document.getElementById('ring-arc');
+  arc.style.stroke = scoreColor(combined);
+  arc.setAttribute('stroke-dashoffset', String(offset));
+  document.getElementById('ring-score').textContent = Math.round(combined);
+  document.getElementById('ring-score').style.color = scoreColor(combined);
+  document.getElementById('ring-grade').textContent = grade;
+
+  const pb = document.getElementById('pass-badge');
+  pb.style.display = 'block';
+  pb.innerHTML = passed
+    ? '<span class="badge badge-ok" style="font-size:14px;padding:6px 16px;">✓ PASS</span>'
+    : '<span class="badge badge-error" style="font-size:14px;padding:6px 16px;">✗ FAIL</span>';
+
+  // Convention checks
+  const hgp = homegrow.passes ?? d.hg_passes ?? 0;
+  const hgw = homegrow.warnings ?? d.hg_warnings ?? 0;
+  const hge = homegrow.errors ?? d.hg_errors ?? 0;
+  const hgi = homegrow.infos ?? d.hg_infos ?? 0;
+  document.getElementById('hg-pass').textContent = hgp;
+  document.getElementById('hg-warn').textContent = hgw;
+  document.getElementById('hg-err').textContent = hge;
+  document.getElementById('hg-info-line').textContent = `${hgi} info · ${hgp + hgw + hge + hgi} total checks`;
+
+  // Meta
+  const metaEl = document.getElementById('latest-meta');
+  metaEl.innerHTML = `
+    <div style="font-size:14px;font-weight:500;margin-bottom:8px;">
+      ${meta.git_branch || '–'}@${(meta.git_commit || '–').slice(0, 7)}
+    </div>
+    <div>Mode: <strong>${meta.mode || '–'}</strong></div>
+    <div>Time: ${meta.timestamp ? new Date(meta.timestamp).toLocaleString() : '–'}</div>
+    <div>Items: ${(meta.agents_list || []).length}</div>
+    ${meta.preset ? `<div>Preset: ${meta.preset}</div>` : ''}
+    ${meta.hardener_model ? `<div>Hardener: ${meta.hardener_model}</div>` : ''}
+  `;
+
+  // Pillars
+  const pillars = [
+    { name: 'Structure', key: 'structure', val: scoring.pillar_structure ?? d.pillar_structure },
+    { name: 'Quality', key: 'quality', val: scoring.pillar_quality ?? d.pillar_quality },
+    { name: 'Consistency', key: 'consistency', val: scoring.pillar_consistency ?? d.pillar_consistency },
+    { name: 'Security', key: 'security', val: scoring.pillar_security ?? d.pillar_security },
+    { name: 'Budget', key: 'budget', val: scoring.pillar_budget ?? d.pillar_budget },
+  ];
+  const pw = scoring.weights || scoring.pillars || {};
+  const pillarsEl = document.getElementById('pillars');
+  pillarsEl.innerHTML = pillars.map(p => {
+    const v = p.val != null && p.val !== 'N/A' ? Number(p.val) : null;
+    const w = pw[p.key] || config[`WEIGHT_${p.key.toUpperCase()}`] || '–';
+    return `<div class="pillar-row">
+      <div class="pillar-name">${p.name} <span style="color:var(--fg3);font-size:11px;">(${w}%)</span></div>
+      <div class="pillar-bar-bg"><div class="pillar-bar" style="width:${v ?? 0}%;background:${scoreColor(v)}"></div></div>
+      <div class="pillar-val" style="color:${scoreColor(v)}">${v != null ? Math.round(v) : '–'}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderEmptyOverview() {
+  document.getElementById('pillars').innerHTML = '<div class="empty"><h3>No reports yet</h3><div>Run <code>./megalint.sh --format json /path</code> to generate reports</div></div>';
+}
+
+// ── Trend chart ───
+function renderTrend() {
+  const canvas = document.getElementById('trend-chart');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+
+  if (trends.length < 2) {
+    ctx.fillStyle = 'var(--fg3)';
+    ctx.font = '14px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(trends.length === 0 ? 'No trend data — run megalint with --format json' : 'Need ≥2 reports for trend', W/2, H/2);
+    document.getElementById('trend-info').textContent = `${trends.length} data point${trends.length !== 1 ? 's' : ''}`;
+    return;
+  }
+
+  const data = [...trends].reverse();
+  const pad = { top: 20, right: 20, bottom: 30, left: 40 };
+  const w = W - pad.left - pad.right;
+  const h = H - pad.top - pad.bottom;
+
+  // grid
+  ctx.strokeStyle = 'rgba(255,255,255,.06)';
+  ctx.lineWidth = 1;
+  for (let v = 0; v <= 100; v += 20) {
+    const y = pad.top + h - (v / 100) * h;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+    ctx.fillStyle = '#666680'; ctx.font = '11px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText(String(v), pad.left - 6, y + 4);
+  }
+
+  // threshold line
+  const thr = config.PASS_THRESHOLD || 70;
+  const thrY = pad.top + h - (thr / 100) * h;
+  ctx.strokeStyle = 'rgba(239,68,68,.3)'; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(pad.left, thrY); ctx.lineTo(W - pad.right, thrY); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // line
+  ctx.strokeStyle = '#7c6ff7'; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  data.forEach((d, i) => {
+    const x = pad.left + (i / (data.length - 1)) * w;
+    const y = pad.top + h - ((d.combined ?? 0) / 100) * h;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // dots
+  data.forEach((d, i) => {
+    const x = pad.left + (i / (data.length - 1)) * w;
+    const y = pad.top + h - ((d.combined ?? 0) / 100) * h;
+    ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = scoreColor(d.combined); ctx.fill();
+  });
+
+  document.getElementById('trend-info').textContent = `${data.length} runs · latest ${data[data.length-1]?.grade || '–'}`;
+}
+
+// ── Rules ───
+function renderRules() {
+  const tbody = document.getElementById('rules-tbody');
+  const search = (document.getElementById('rule-search').value || '').toLowerCase();
+  const modeF = document.getElementById('rule-mode-filter').value;
+  const sevF = document.getElementById('rule-sev-filter').value;
+
+  const filtered = rules.filter(r =>
+    (!search || r.id.includes(search) || r.description.toLowerCase().includes(search)) &&
+    (!modeF || r.mode === modeF) &&
+    (!sevF || r.severity === sevF)
+  );
+
+  tbody.innerHTML = filtered.map(r => `<tr>
+    <td><code>${r.id}</code></td>
+    <td>${sevBadge(r.severity)}</td>
+    <td><span class="badge badge-${r.mode}">${r.mode}</span></td>
+    <td>${r.description}</td>
+  </tr>`).join('');
+  document.getElementById('rule-count').textContent = `${filtered.length} of ${rules.length} rules`;
+}
+
+document.getElementById('rule-search').addEventListener('input', renderRules);
+document.getElementById('rule-mode-filter').addEventListener('change', renderRules);
+document.getElementById('rule-sev-filter').addEventListener('change', renderRules);
+
+// ── Reports ───
+function renderReports() {
+  const el = document.getElementById('reports-list');
+  if (reports.length === 0) {
+    el.innerHTML = '<div class="empty"><h3>No reports</h3><div>Run <code>./megalint.sh --format json /path</code></div></div>';
+    return;
+  }
+  el.innerHTML = reports.map(r => `<div class="report-item" onclick="showReport('${r.id}')">
+    <div class="report-score" style="color:var(--accent2)">#</div>
+    <div class="report-meta">
+      <div class="title">${r.id}</div>
+      <div class="detail">${new Date(r.ts).toLocaleString()}</div>
+    </div>
+  </div>`).join('');
+}
+
+async function showReport(id) {
+  document.getElementById('reports-list').style.display = 'none';
+  document.getElementById('report-detail').style.display = 'block';
+  const data = await api('/api/reports/' + id);
+  document.getElementById('report-json').textContent = JSON.stringify(data, null, 2);
+}
+
+function showReportsList() {
+  document.getElementById('reports-list').style.display = 'block';
+  document.getElementById('report-detail').style.display = 'none';
+}
+
+// ── Lint ───
+async function runLint() {
+  const path = document.getElementById('lint-path').value.trim();
+  if (!path) { toast('Enter a path'); return; }
+  const mode = document.getElementById('lint-mode').value || undefined;
+  const preset = document.getElementById('lint-preset').value || undefined;
+  const btn = document.getElementById('lint-btn');
+  btn.disabled = true; btn.textContent = 'Running…';
+
+  const result = await api('/api/lint', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, mode, preset }),
+  });
+
+  btn.disabled = false; btn.textContent = 'Run';
+  if (!result) return;
+
+  document.getElementById('lint-results').style.display = 'block';
+  document.getElementById('lint-json').textContent = JSON.stringify(result, null, 2);
+
+  const scoring = result.scoring || result;
+  const meta = result.meta || result;
+  const cards = document.getElementById('lint-summary-cards');
+  cards.innerHTML = `
+    <div class="card">
+      <h3>Score</h3>
+      <div class="stat" style="color:${scoreColor(scoring.combined ?? result.combined)}">${Math.round(scoring.combined ?? result.combined ?? 0)}</div>
+      <div class="sub">${scoring.grade ?? result.grade ?? '–'} · ${(scoring.passed ?? result.passed) ? '✓ PASS' : '✗ FAIL'}</div>
+    </div>
+    <div class="card">
+      <h3>Mode</h3>
+      <div class="stat blue">${meta.mode || '–'}</div>
+      <div class="sub">${(meta.agents_list || []).length} items</div>
+    </div>
+    <div class="card">
+      <h3>Checks</h3>
+      <div style="display:flex;gap:12px;">
+        <div><span class="stat green" style="font-size:28px;">${result.hg_passes ?? (result.homegrow||{}).passes ?? '–'}</span> <span class="sub">ok</span></div>
+        <div><span class="stat yellow" style="font-size:28px;">${result.hg_warnings ?? (result.homegrow||{}).warnings ?? '–'}</span> <span class="sub">warn</span></div>
+        <div><span class="stat red" style="font-size:28px;">${result.hg_errors ?? (result.homegrow||{}).errors ?? '–'}</span> <span class="sub">err</span></div>
+      </div>
+    </div>
+  `;
+  toast('Lint complete');
+}
+
+// ── Config ───
+function renderConfig() {
+  const weightsEl = document.getElementById('config-weights');
+  const threshEl = document.getElementById('config-thresholds');
+  const weightKeys = ['WEIGHT_STRUCTURE','WEIGHT_QUALITY','WEIGHT_CONSISTENCY','WEIGHT_SECURITY','WEIGHT_BUDGET'];
+  weightsEl.innerHTML = weightKeys.map(k => {
+    const v = config[k] || '–';
+    const name = k.replace('WEIGHT_','').toLowerCase();
+    return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+      <span>${name}</span><span style="font-weight:600;">${v}%</span>
+    </div>`;
+  }).join('');
+
+  const gradeKeys = Object.keys(config).filter(k => k.startsWith('GRADE_')).sort((a,b) => (config[b]||0) - (config[a]||0));
+  threshEl.innerHTML = `
+    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <span>Pass threshold</span><span style="font-weight:600;color:var(--green);">${config.PASS_THRESHOLD || 70}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <span>Blocking errors</span><span style="font-weight:600;">${config.BLOCKING_ERRORS || 'true'}</span>
+    </div>
+    <div style="margin-top:12px;font-size:13px;color:var(--fg2);">Grade Scale</div>
+    ${gradeKeys.map(k => `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;">
+      <span style="color:var(--fg2);">${k.replace('GRADE_','').replace(/_/g,' ')}</span>
+      <span>≥ ${config[k]}</span>
+    </div>`).join('')}
+  `;
+}
+
+// ── Boot ───
+init();
+window.addEventListener('resize', renderTrend);
+</script>
+</body>
+</html>

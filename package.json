@@ -1,0 +1,17 @@
+{
+  "name": "megalint",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "bun run web/server.ts",
+    "mcp": "bun run mcp/server.ts",
+    "test": "bats tests/megalint.bats"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
