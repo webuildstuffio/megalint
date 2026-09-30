@@ -12,9 +12,14 @@ build/
 __pycache__/
 *.pyc
 *.pyo
+.ruff_cache/
 
 # Reports (generated at runtime)
 .reports/
+
+# Analytics data
+apps/agentlinter/analytics/
+apps/agentlinter/lint-result.json
 
 # Environment files
 .env
