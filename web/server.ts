@@ -238,6 +238,17 @@ Bun.serve({
       }
     }
 
+    if (path === "/api/health") {
+      const reports = await listReports();
+      return json({
+        status: "ok",
+        version: "1.0.0",
+        rules: RULES.length,
+        reports: reports.length,
+        reports_dir: REPORTS_DIR,
+      });
+    }
+
     return new Response("Not Found", { status: 404 });
   },
 });

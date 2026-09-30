@@ -1,7 +1,7 @@
 {
   "name": "agentlinter",
   "version": "0.8.2",
-  "description": "ESLint for AI Agents — Score, diagnose, and auto-fix your CLAUDE.md and agent workspace files",
+  "description": "ESLint for AI Agents \u2014 Score, diagnose, and auto-fix your CLAUDE.md and agent workspace files",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -25,5 +25,6 @@
     "@types/react": "^19.3.0",
     "postcss-load-config": "^6.0.1",
     "typescript": "^7.0.2"
-  }
+  },
+  "license": "MIT"
 }

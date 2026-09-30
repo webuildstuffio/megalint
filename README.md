@@ -1,346 +1,273 @@
-# Megalint
+# ⚡ megalint
 
-AI prompt, skill, and agent linter. Four complementary tools run in parallel, producing a single merged report with consistent scoring. Supports AI skills, system prompts, and agent workspaces.
+**AI prompt, skill, and agent linter.** Four tools run in parallel → one scored report.
+
+Lint your AI skills, system prompts, and agent workspaces for structure, quality, security, and convention adherence — backed by [empirical research](https://arxiv.org/abs/2609.31575) on 407 real-world system prompts across 33 companies.
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-7c6ff7?style=flat-square)](LICENSE)
+
+---
+
+## Install
+
+```bash
+git clone https://github.com/webuildstuffio/megalint.git
+cd megalint
+
+# Install tool dependencies
+brew install node ripgrep               # macOS (or apt-get on Linux)
+cd apps/agentlinter && bun install && cd ../..
+cd apps/promptlint && uv venv .venv && uv pip install -e . --python .venv/bin/python && cd ../..
+
+# Optional: Prompt Hardener (Tool 4 — requires Anthropic API key)
+cp .env.example .env                    # edit → set ANTHROPIC_API_KEY
+cd apps/prompt-hardener && uv venv .venv && uv pip install -e . --python .venv/bin/python && cd ../..
+```
+
+**Verify:** `./megalint.sh --help` should print usage.
 
 ## Quick Start
 
 ```bash
-# Skills (primary use case)
-./megalint.sh --mode skills ~/.cursor/skills/           # Lint all skills
-./megalint.sh --mode skills ~/.cursor/skills/bugfix      # Lint one skill
-./megalint.sh ~/.cursor/skills/stop-slop                 # Auto-detect: skills mode
+# Lint skills (primary use case)
+./megalint.sh ~/.cursor/skills/bugfix          # one skill
+./megalint.sh --mode skills ~/.cursor/skills/  # all skills
 
-# Prompts
-./megalint.sh my-system-prompt.md                        # Lint a prompt file
-./megalint.sh AGENTS.md CLAUDE.md                        # Multiple prompt files
-
-# Agent workspaces (legacy)
-./megalint.sh --mode agents --agents-dir src/agents      # OpenClaw workspace
-
-# Rule control
-./megalint.sh --mode skills --list-rules                 # Show all skill rules with IDs
-./megalint.sh --disable-rule skill/examples,skill/output-format  # Disable specific rules
-./megalint.sh --preset minimal                           # Only ERROR-severity rules
-./megalint.sh --preset balanced                          # ERROR + WARN rules (no INFO)
-./megalint.sh -q                                         # Suppress OK/INFO in output
+# Lint prompts
+./megalint.sh AGENTS.md CLAUDE.md              # prompt files
+./megalint.sh --mode prompts ./my-prompts/     # directory of .md files
 
 # Common options
-./megalint.sh --yes                                      # Include Prompt Hardener (API cost)
-./megalint.sh --format both --yes                        # Save JSON + Markdown reports
-./megalint.sh --help                                     # All options
+./megalint.sh --preset balanced /path          # ERROR + WARN only (skip INFO)
+./megalint.sh --disable-rule skill/examples    # disable specific rules
+./megalint.sh --format json /path              # save JSON report to .reports/
+./megalint.sh --json /path                     # JSON to stdout (pipe-friendly)
+./megalint.sh -q /path                         # quiet: errors and warnings only
 ```
 
-## Modes
+## Four Interfaces
 
-| Mode | Description | Auto-detect |
-|------|-------------|-------------|
-| `--mode skills` | Skill directories with SKILL.md | Has `SKILL.md` |
-| `--mode prompts` | Individual .md prompt files | Fallback |
-| `--mode agents` | OpenClaw MDS agent workspaces | Has `AGENTS.md` + `SOUL.md` |
-| `--mode auto` | Detect from input (default) | — |
-
-## Why Four Tools?
-
-Each tool solves a different layer of prompt quality. No single tool covers everything.
-
-| Capability | AgentLinter | PromptLint | Conventions | Prompt Hardener |
-|-----------|:-----------:|:----------:|:-----------:|:---------------:|
-| **Type** | Static (Node.js) | Static (Python) | Static (Bash) | LLM-powered (API) |
-| **Scope** | Whole workspace | Per-file | Cross-item | Per-item |
-| **Cost** | Free | Free | Free | ~$0.02/item |
-| **Speed** | ~1s/item | ~0.5s/file | Instant | ~5s/item |
-| | | | | |
-| File structure / naming | **Yes** | | **Yes** | |
-| Required files present | | | **Yes** | |
-| Section hierarchy | **Yes** | | | |
-| Vague instructions / passive voice | **Yes** | **Yes** | | |
-| Contradictions / conflicting directives | **Yes** | **Yes** | | |
-| Ambiguous pronouns / naked conditionals | **Yes** | | | |
-| Token cost estimation | | **Yes** | | |
-| Secret patterns (API keys, tokens, PII) | **Yes** | **Yes** | **Yes** | |
-| Injection patterns (OWASP regex) | | **Yes** | **Yes** | |
-| Prompt injection defense | | | | **Yes** |
-| Persona switching defense | | | | **Yes** |
-| Role consistency | | | | **Yes** |
-| Skill SKILL.md structure | | | **Yes** | |
-| Skill when-to-use guidance | | | **Yes** | |
-| Skill dangerous commands | | | **Yes** | |
-| Skill actionable instructions | | | **Yes** | |
-| Skill scope boundaries | | | **Yes** | |
-| Skill tool boundaries | | | **Yes** | |
-| Skill error handling guidance | | | **Yes** | |
-| Memory / session handoff | **Yes** | | | |
-
-## Rule Registry
-
-Every convention check has a unique **rule ID** (e.g., `skill/file-exists`, `prompt/injection`). Rules can be individually toggled via `--disable-rule` and filtered by `--preset`.
-
-### Skill Rules (16 rules)
-
-| Rule ID | Severity | Description | Research Citation |
-|---------|:--------:|-------------|-------------------|
-| `skill/file-exists` | ERROR | SKILL.md must exist | Claude Code skill architecture |
-| `skill/description` | WARN | Clear description/purpose | arxiv 2609.31575 — 2.9% identity/persona |
-| `skill/when-to-use` | WARN | Trigger guidance for agents | Claude Code `description` field |
-| `skill/structure` | WARN | ≥2 markdown headings | arxiv 2609.31575 — 12.4% formatting/style |
-| `skill/dangerous-commands` | ERROR | No rm -rf /, curl\|sh, etc. | Claude Code: "reversibility and blast radius" |
-| `skill/actionable` | WARN | Steps, bullets, or code | Devin/Claude Code step-by-step patterns |
-| `skill/injection` | WARN | No injection patterns | arxiv 2609.31575 Table 5 |
-| `skill/file-count` | INFO | ≤5 files per skill | Single-responsibility |
-| `skill/scope-boundaries` | INFO | What the skill should NOT do | arxiv 2609.31575 — 5.4% safety/boundaries |
-| `skill/examples` | INFO | Concrete examples present | ChatGPT: behavior through examples |
-| `skill/output-format` | INFO | Output format specified | arxiv 2609.31575 — 12.4% formatting/style |
-| `skill/error-handling` | INFO | Error recovery instructions | Claude Code, Devin, Cursor agents |
-| `skill/secrets` | ERROR | No hardcoded API keys/PII | Standard security |
-| `skill/restrictions` | INFO | NEVER/MUST NOT markers | arxiv 2609.31575 Fig. 7: 4,725 emphatic markers |
-| `skill/tool-boundaries` | INFO | Tool use boundaries | arxiv 2609.31575 — 58% tool/protocol rules |
-| `skill/idempotent` | WARN | Destructive ops have safeguards | Claude Code: "check with user" |
-
-### Prompt Rules (7 rules)
-
-| Rule ID | Severity | Description | Research Citation |
-|---------|:--------:|-------------|-------------------|
-| `prompt/identity` | INFO | Role/identity definition | arxiv 2609.31575 — 2.9% identity/persona |
-| `prompt/output-format` | INFO | Output format guidance | arxiv 2609.31575 — 12.4% formatting/style |
-| `prompt/dangerous-commands` | ERROR | No destructive commands | Standard security |
-| `prompt/injection` | WARN | No injection patterns | arxiv 2609.31575 Table 5 |
-| `prompt/scope` | INFO | Scope/task boundaries | Universal across top prompts |
-| `prompt/examples` | INFO | Concrete examples | ChatGPT example-driven behavior |
-| `prompt/constraints` | INFO | NEVER/MUST NOT markers | arxiv 2609.31575 Fig. 7 |
-
-### Presets
-
-| Preset | Rules | Description |
-|--------|:-----:|-------------|
-| `strict` | All | Every rule enabled (default) |
-| `balanced` | ERROR + WARN | Skip INFO-only advisory rules |
-| `minimal` | ERROR only | Bare minimum — dangerous commands, secrets, file exists |
-
-## Options
-
-| Flag | Description |
-|------|-------------|
-| `--mode MODE` | Linting mode: `auto`, `skills`, `prompts`, `agents` (default: auto) |
-| `-y, --yes` | Skip cost confirmation for Prompt Hardener |
-| `-m, --model MODEL` | Override model (`claude-sonnet-4-6` or `claude-opus-4-6`) |
-| `-f, --format FORMAT` | Output report: `json`, `md`, or `both` |
-| `--pass-threshold N` | Minimum score to pass (default: 70) |
-| `--no-blocking` | Don't fail on convention errors regardless of score |
-| `-d, --agents-dir DIR` | Override input directory |
-| `-c, --config FILE` | Load alternate config file |
-| `--list-rules` | List all rules for the current mode and exit |
-| `--disable-rule ID,...` | Disable specific rules by comma-separated IDs |
-| `--preset PRESET` | Apply rule preset: `strict`, `balanced`, `minimal` |
-| `-q, --quiet` | Only show errors and warnings (suppress OK/INFO) |
-| `--json` | Output results as JSON to stdout |
-| `-h, --help` | Show help |
-| `[path...]` | Lint specific items (default: all in directory) |
-
-## Configuration
-
-`megalint.conf` controls weights, thresholds, and grade scale. All values are editable:
+### CLI
 
 ```bash
-WEIGHT_STRUCTURE=25     # AgentLinter — workspace structure, clarity, rules
-WEIGHT_QUALITY=18       # PromptLint — per-file clarity (0-10 scaled to 0-100)
-WEIGHT_CONSISTENCY=22   # Home-Grow — cross-agent consistency checks
-WEIGHT_SECURITY=20      # Prompt Hardener — LLM-powered injection testing
-WEIGHT_BUDGET=15        # Token Budget — per-file length vs budget scoring
-
-PASS_THRESHOLD=70       # minimum score to pass
-BLOCKING_ERRORS=true    # any ERROR = fail regardless of score
+./megalint.sh [options] [path...]
+./megalint.sh --list-rules                     # show all rules with IDs
+./megalint.sh --help                           # full options
 ```
 
-CLI flags override config values for a single run.
+### Web Dashboard
 
-## Output
+```bash
+./megalint.sh --serve                          # → http://localhost:7777
+# or: bun run web/server.ts --port 3000
+```
 
-Reports are saved to `.reports/` (gitignored).
+Rules explorer, report viewer, score trends, live lint runner, config viewer.
 
-Each run produces:
-- **Log file** — `lint-run_{commit}_{timestamp}.log` (always)
-- **JSON report** — `report_{commit}_{timestamp}.json` (with `--format json` or `both`)
-- **Markdown report** — `report_{commit}_{timestamp}.md` (with `--format md` or `both`)
+### MCP Server
 
-Intermediate files (tool stdout, Hardener evals) go to a temp directory and are cleaned up automatically (trap on EXIT/INT/TERM).
-
-### Version Tracking
-
-Every report includes git metadata for tracking progress over time:
+Add to `~/.cursor/mcp.json`:
 
 ```json
 {
-  "meta": {
-    "run_id": "0c41d44_2026-02-20_16-15-47",
-    "git": {
-      "commit": "0c41d44",
-      "branch": "main",
-      "dirty": false,
-      "message": "Add passportio agent and update shared configs"
-    },
-    "mode": "skills",
-    "disabled_rules": "",
-    "preset": ""
+  "megalint": {
+    "command": "bun",
+    "args": ["run", "/path/to/megalint/mcp/server.ts"]
   }
 }
 ```
 
-Run ID = `{commit}_{timestamp}`, so you can compare scores across commits.
+**Tools:** `megalint_lint` · `megalint_rules` · `megalint_report` · `megalint_trends` · `megalint_config`
 
-### Unified Report Format
+### CI (GitHub Actions)
 
-All four tools merge into a single consistent structure:
+```yaml
+# .github/workflows/megalint.yml
+name: megalint
+on:
+  pull_request:
+    paths: ['**/*.md', '.cursor/skills/**']
 
-```json
-{
-  "meta": { "run_id", "timestamp", "git": {...}, "model", "agents_scanned", "mode" },
-  "scoring": {
-    "combined": 84.2, "grade": "B+", "passed": true,
-    "pass_threshold": 70, "blocking_errors": true,
-    "pillars": {
-      "structure": { "score": 84, "weight": 25, "tool": "AgentLinter" },
-      "quality": { "score": 87.3, "weight": 18, "tool": "PromptLint" },
-      "consistency": { "score": 90, "weight": 22, "tool": "Home-Grow" },
-      "security": { "score": 40, "weight": 20, "tool": "Prompt Hardener" },
-      "budget": { "score": 99, "weight": 15, "tool": "Token Budget" }
-    },
-    "quality_detail": { "clarity": 8.2, "security": 9.5, "cost": 8.5 }
-  },
-  "agents": {
-    "my-skill": {
-      "agentlinter": { "score": 84, "categories": {...}, "diagnostics": [...] },
-      "promptlint": { "SKILL.md": { "clarity": 7.2, "security": 10, ... }, ... },
-      "prompt_hardener": { "Spotlighting": {...}, "Instruction Defense": {...}, ... }
-    }
-  },
-  "homegrow": { "passes": 58, "warnings": 4, "errors": 1, "checks": [...] }
-}
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: webuildstuffio/megalint@main
+        with:
+          path: .cursor/skills
+          mode: skills
+          preset: balanced
+          fail-on-error: true
+          comment: true         # posts score as PR comment
 ```
 
-## Dependencies
+## How Scoring Works
 
-- **Node.js** — AgentLinter
-- **ripgrep (rg)** — Convention checks
-- **Python 3** + venvs — PromptLint, Prompt Hardener
+Five pillars, weighted:
 
-Install: `brew install node ripgrep` (macOS). Missing deps fail early with clear errors.
+| Pillar | Tool | What it measures | Weight |
+|--------|------|------------------|:------:|
+| Structure | AgentLinter | File layout, headings, naming | 25% |
+| Quality | PromptLint | Clarity, security, cost efficiency | 18% |
+| Consistency | Conventions | Cross-item rule adherence | 22% |
+| Security | Prompt Hardener | LLM injection defense | 20% |
+| Budget | Token count | Token usage vs budget targets | 15% |
 
-## Environment Setup
+**Pass/fail:** score ≥ 70 AND no blocking errors (both configurable).
+
+**Grades:** S (97+) · A+ (95) · A (93) · A- (90) · B+ (87) · B (83) · B- (80) · C+ (77) · C (73) · C- (70) · D (60) · F (<60)
+
+When a tool is skipped (e.g. Hardener without API key), its weight redistributes proportionally.
+
+## Rule Registry
+
+23 rules with unique IDs. Control via `--disable-rule`, `--preset`, or `--list-rules`.
+
+### Skill Rules (16)
+
+| Rule | Sev | Description |
+|------|:---:|-------------|
+| `skill/file-exists` | ERROR | SKILL.md must exist |
+| `skill/dangerous-commands` | ERROR | No `rm -rf /`, `curl\|sh`, etc. |
+| `skill/secrets` | ERROR | No hardcoded API keys or PII |
+| `skill/description` | WARN | Clear description/purpose statement |
+| `skill/when-to-use` | WARN | Trigger guidance for agents |
+| `skill/structure` | WARN | ≥2 markdown headings |
+| `skill/actionable` | WARN | Steps, bullets, or code examples |
+| `skill/injection` | WARN | No prompt injection patterns |
+| `skill/idempotent` | WARN | Destructive ops have safeguards |
+| `skill/file-count` | INFO | ≤5 files per skill |
+| `skill/scope-boundaries` | INFO | Defines what the skill should NOT do |
+| `skill/examples` | INFO | Concrete examples or code blocks |
+| `skill/output-format` | INFO | Output format specification |
+| `skill/error-handling` | INFO | Error recovery instructions |
+| `skill/restrictions` | INFO | NEVER/MUST NOT safety markers |
+| `skill/tool-boundaries` | INFO | Tool use boundaries |
+
+### Prompt Rules (7)
+
+| Rule | Sev | Description |
+|------|:---:|-------------|
+| `prompt/dangerous-commands` | ERROR | No destructive commands |
+| `prompt/injection` | WARN | No injection patterns |
+| `prompt/identity` | INFO | Role/identity definition |
+| `prompt/output-format` | INFO | Output format guidance |
+| `prompt/scope` | INFO | Scope/task boundaries |
+| `prompt/examples` | INFO | Concrete examples |
+| `prompt/constraints` | INFO | Emphatic constraints (NEVER/MUST NOT) |
+
+### Presets
+
+| Preset | Includes | Use when |
+|--------|----------|----------|
+| `strict` | All rules | Development, thorough review |
+| `balanced` | ERROR + WARN | CI gates, day-to-day |
+| `minimal` | ERROR only | Quick sanity check |
+
+## Configuration
+
+Edit `megalint.conf`:
 
 ```bash
-cp .env.example .env
-# Edit .env → set ANTHROPIC_API_KEY
+WEIGHT_STRUCTURE=25     # pillar weights (must sum to 100)
+WEIGHT_QUALITY=18
+WEIGHT_CONSISTENCY=22
+WEIGHT_SECURITY=20
+WEIGHT_BUDGET=15
+
+PASS_THRESHOLD=70       # minimum score to pass
+BLOCKING_ERRORS=true    # any convention ERROR = fail regardless of score
 ```
 
-Only needed for Tool 4 (Prompt Hardener). Tools 1-3 are free and run without keys.
+CLI flags override config for a single run.
 
-## Models
+## Why Four Tools?
 
-| Model | Input $/MTok | Output $/MTok | Best for |
-|-------|:------------:|:-------------:|----------|
-| `claude-sonnet-4-6` | $3 | $15 | Fast default, good accuracy |
-| `claude-opus-4-6` | $5 | $25 | Deepest analysis |
+| Capability | AgentLinter | PromptLint | Conventions | Hardener |
+|-----------|:-:|:-:|:-:|:-:|
+| File structure / naming | ✓ | | ✓ | |
+| Vague/passive instructions | ✓ | ✓ | | |
+| Secret patterns | ✓ | ✓ | ✓ | |
+| Injection defense (regex) | | ✓ | ✓ | |
+| Injection defense (LLM) | | | | ✓ |
+| Skill structure checks | | | ✓ | |
+| Token cost estimation | | ✓ | | |
+| Persona switching defense | | | | ✓ |
+| **Cost** | Free | Free | Free | ~$0.02/item |
 
-## Scoring
+No single tool covers all layers. Together they catch what each misses.
 
-All five pillars contribute to the combined score via weighted pillars:
-
-| Pillar | Tool | How | Default Weight |
-|--------|------|-----|:-:|
-| Structure | AgentLinter | Raw 0-100 score | 25% |
-| Quality | PromptLint | avg(clarity, security, cost) * 10 → 0-100 | 18% |
-| Consistency | Conventions | (OK×1.0 + WARN×0.5 + ERR×0.0) / total × 100 | 22% |
-| Security | Prompt Hardener | (satisfied_checks / total_checks) * 100 | 20% |
-| Token Budget | Length check | Per-file tokens vs budget (LOAD_WEIGHTS) | 15% |
-
-When a tool is skipped (e.g., Hardener without API key), its weight redistributes proportionally.
-
-**Pass/fail:** Score >= threshold (default 70) AND no blocking errors. Configurable via `megalint.conf` or CLI.
-
-**Grade scale:** S (97+), A+ (95+), A (93+), A- (90+), B+ (87+), B (83+), B- (80+), C+ (77+), C (73+), C- (70+), D (60+), F (<60)
-
-**Display format:** `84 (B+)` — score first, grade in brackets, used consistently everywhere.
-
-## Research Citations
-
-Rule patterns are derived from empirical analysis of leaked system prompts:
-
-- **[arxiv.org/abs/2609.31575](https://arxiv.org/abs/2609.31575)** — "A Large-Scale Empirical Study of LLM System Prompts" (Sep 2026). 407 system prompts from 33 companies. Key findings: 58% tool/protocol, 12.4% formatting/style, 7.4% memory/context, 5.4% safety, 2.9% identity/persona. CRITICAL/NEVER/MUST NOT markers cluster on tool use + file safety + formatting.
-- **Claude Code system prompt** — Lean skill format: `description` + `allowedTools` + bundled files. Emphasis on reversibility, blast radius, tool boundaries, error recovery.
-- **ChatGPT system prompt** — Behavioral encoding through examples and constraints, not declarative rules alone.
-- **Devin system prompt** — Step-by-step workflow definitions, tool boundaries, scope limits.
-- **YeeKal/leaked-system-prompts** — 100+ system prompt collection across major AI products.
-
-## Modifying the Tools
-
-All tools are cloned directly into this repo (no `.git`). Edit source directly:
-
-- **AgentLinter rules:** `apps/agentlinter/packages/cli/src/engine/rules/` → rebuild with `bun run build`
-- **PromptLint analyzers:** `apps/promptlint/promptlint/analyzers/` → no build needed
-- **Prompt Hardener:** `apps/prompt-hardener/src/prompt_hardener/` → no build needed
-- **Convention checks:** `apps/homegrow/skills.sh` / `prompts.sh` / `run.sh` → no build needed
-- **Rule registry:** `apps/homegrow/RULES.md` — canonical reference for all rule IDs
-
-## Directory Layout
+## Project Structure
 
 ```
-megalint/
-  megalint.sh            # Unified runner (all 4 tools, 3 modes)
-  megalint.conf          # Scoring weights, thresholds, grade scale
-  apps/                  # Self-contained tool apps
-    agentlinter/         # TypeScript, workspace-level linting
-    promptlint/          # Python, per-file quality scoring
-    prompt-hardener/     # Python, LLM-powered security testing
-    homegrow/            # Bash, mode-aware convention checks
-      run.sh             # Dispatcher + agents checks
-      skills.sh          # 16 skill-specific checks (sourced by run.sh)
-      prompts.sh         # 7 prompt-specific checks (sourced by run.sh)
-      rules.conf         # Per-check toggles + token budget targets
-      RULES.md           # Rule registry reference
-  lib/                   # Extracted Python modules (testable, lintable)
-    config.py            # Single source of truth for weights, grades, pricing, modes
-    process.py           # Tool adapters, process_all, writes summary.json
-    display.py           # Reads summary.json, prints terminal output
-    scoring.py           # 5-pillar scoring engine
-    report.py            # JSON + Markdown report generator
-  tests/
-    megalint.bats        # Regression and parity tests
-  .env.example           # API key template (committed)
-  .env                   # Your API keys (gitignored)
-  .reports/              # All output (gitignored)
-  README.md              # This file
+megalint.sh              # CLI runner (orchestrates all 4 tools)
+megalint.conf            # Scoring config
+web/
+  server.ts              # Web dashboard (Bun)
+  dashboard.html         # SPA
+mcp/
+  server.ts              # MCP server (stdio)
+ci/
+  action.yml             # GitHub Actions composite action
+  megalint.example.yml   # Example workflow
+apps/
+  agentlinter/           # Tool 1: structure (Node.js)
+  promptlint/            # Tool 2: quality (Python, MIT)
+  prompt-hardener/       # Tool 3: security (Python, Apache-2.0)
+  homegrow/              # Tool 4: conventions (Bash)
+    run.sh               # Dispatcher
+    skills.sh            # 16 skill checks
+    prompts.sh           # 7 prompt checks
+    rules.conf           # Check toggles + token budgets
+lib/
+  config.py              # Weights, grades, pricing
+  process.py             # Tool output processor
+  scoring.py             # 5-pillar scoring engine
+  display.py             # Terminal renderer
+  report.py              # JSON/Markdown reports
+  tiktoken_count.py      # Token counter
+tests/
+  megalint.bats          # 25 regression tests
 ```
 
 ## Tests
 
 ```bash
-bats tests/megalint.bats
+bats tests/megalint.bats    # 25 tests
 ```
 
-Covers: help/format validation, temp cleanup, no-eval parsing, homegrow delegation, template exclusion, portability, and refactored Python libs (config, process, display).
+## Environment
 
-## Status
+| Requirement | Version | Why |
+|-------------|---------|-----|
+| Node.js | 18+ | AgentLinter |
+| Python | 3.10+ | PromptLint, Prompt Hardener, scoring |
+| Bun | 1.0+ | Web dashboard, MCP server |
+| ripgrep (`rg`) | any | Convention checks |
+| Bash | 4+ | Shell scripts |
 
-- **Stream A** (safety): done ✅
-- **Stream B** (dead code): done ✅
-- **Stream C** (portability): done ✅
-- **Stream D1** (homegrow dedup): done ✅
-- **D2-D7** (Python extraction): done ✅
-- **Skills/Prompts generalization**: done ✅
-- **Rule registry + research-backed checks**: done ✅
+Optional: `ANTHROPIC_API_KEY` in `.env` for Prompt Hardener.
 
-See **[BUGS.md](BUGS.md)** for full tracker.
+## Research
 
-## Deep Dive
+Rules derived from:
 
-See **[ANALYSIS.md](ANALYSIS.md)** for: per-check analysis with ratings and failure modes for all 31 Home-Grow checks and 10 Prompt Hardener sub-criteria.
+- **[arxiv 2609.31575](https://arxiv.org/abs/2609.31575)** — 407 leaked system prompts across 33 companies. 58% tool/protocol, 12.4% formatting, 5.4% safety, 2.9% identity.
+- **Claude Code** — Skill architecture: `description` + `allowedTools` + bundled files. Reversibility, blast radius, tool boundaries.
+- **ChatGPT** — Behavioral encoding through examples and constraints.
+- **Devin** — Step-by-step workflows, scope limits.
 
-## Reinstalling Dependencies
+## Third-Party Notices
 
-If you move or rename the directory, recreate the Python venvs (shebangs encode absolute paths):
+megalint includes forked components. See [NOTICE](NOTICE) for full attribution.
 
-```bash
-cd apps/agentlinter/packages/cli && bun install && bun run build
-cd apps/promptlint && uv venv .venv && uv pip install -e . --python .venv/bin/python
-cd apps/prompt-hardener && uv venv .venv && uv pip install -e . --python .venv/bin/python
-```
+| Component | License | Location |
+|-----------|---------|----------|
+| PromptLint | MIT | `apps/promptlint/` |
+| Prompt Hardener | Apache 2.0 | `apps/prompt-hardener/` |
+| AgentLinter | Internal | `apps/agentlinter/` |
+
+## License
+
+[MIT](LICENSE) — use freely for any purpose, commercial or otherwise.

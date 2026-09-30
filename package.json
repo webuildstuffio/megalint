@@ -1,7 +1,9 @@
 {
   "name": "megalint",
   "version": "1.0.0",
-  "private": true,
+  "license": "MIT",
+  "description": "AI prompt, skill, and agent linter — four tools, one scored report",
+  "repository": "webuildstuffio/megalint",
   "type": "module",
   "scripts": {
     "serve": "bun run web/server.ts",
