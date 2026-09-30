@@ -79,6 +79,7 @@ while [[ $# -gt 0 ]]; do
     --yes|-y)              YES_FLAG=true; shift ;;
     --no-yes)              YES_FLAG=false; shift ;;
     --help|-h)             HELP_FLAG=true; shift ;;
+    --version|-V)          echo "megalint 1.0.0"; exit 0 ;;
     --model|-m)            MODEL_FLAG="$2"; shift 2 ;;
     --model=*)             MODEL_FLAG="${1#*=}"; shift ;;
     --format|-f)           FORMAT_FLAG="$2"; shift 2 ;;
@@ -209,6 +210,7 @@ Options:
   --no-blocking              Don't fail on convention errors regardless of score
   -c, --config FILE          Load alternate config file
   -h, --help                 Show this help
+  -V, --version              Show version
 
 Rule Control:
   --list-rules               List all rules for the current mode with IDs and exit
@@ -313,11 +315,27 @@ fi
 
 # ─── Dependency checks (after help/list-rules, so those work without deps) ───
 
-command -v rg >/dev/null 2>&1 || { printf '\033[31m%s\033[0m\n' "ripgrep (rg) not found — install for convention checks"; exit 1; }
+command -v rg >/dev/null 2>&1 || { printf '\033[31m%s\033[0m\n' "ripgrep (rg) not found — install: brew install ripgrep"; exit 1; }
 
+# Python: prefer promptlint venv (has all deps), fall back to system python3
 PY="$SCRIPT_DIR/apps/promptlint/.venv/bin/python"
-[[ -x "$PY" ]] || { printf '\033[31m%s\033[0m\n' "Python venv not found at $PY — run: cd apps/promptlint && uv venv .venv && uv pip install -e ."; exit 1; }
-NODE="$(command -v node 2>/dev/null)" || { printf '\033[31m%s\033[0m\n' "node not found — install Node.js"; exit 1; }
+PROMPTLINT_AVAILABLE=true
+if [[ ! -x "$PY" ]]; then
+  PY="$(command -v python3 2>/dev/null || true)"
+  PROMPTLINT_AVAILABLE=false
+  [[ -x "$PY" ]] || { printf '\033[31m%s\033[0m\n' "Python 3 not found — install python3" >&2; exit 1; }
+  echo "  $(yellow "NOTE:") PromptLint venv not found — Quality pillar skipped (weight redistributed)" >&2
+  echo "        Setup: cd apps/promptlint && uv venv .venv && uv pip install -e ." >&2
+fi
+
+# Node: needed for AgentLinter
+AGENTLINTER_AVAILABLE=true
+NODE="$(command -v node 2>/dev/null || true)"
+if [[ -z "$NODE" ]]; then
+  AGENTLINTER_AVAILABLE=false
+  echo "  $(yellow "NOTE:") node not found — Structure pillar skipped (weight redistributed)" >&2
+  echo "        Install: brew install node" >&2
+fi
 
 # ─── Git metadata ─────────────────────────────────────────────────────────────
 
@@ -347,7 +365,7 @@ log "Git message: $GIT_MSG"
 log "Working directory: $REPO_ROOT"
 log "Mode: $MODE"
 
-echo "  $(dim "mode: $MODE")"
+echo "  $(dim "mode: $MODE")" >&2
 
 # ─── Item discovery (mode-aware) ─────────────────────────────────────────────
 
@@ -498,48 +516,55 @@ HG_DIR="$TMPDIR_RUN/homegrow"
 mkdir -p "$AL_DIR" "$PL_DIR" "$HG_DIR"
 
 # ─── Tool 1: AgentLinter (background) ────────────────────────────────────────
-(
-  for agent in "${AGENTS[@]}"; do
-    agent_dir="${AGENT_DIRS[$agent]}"
-    [[ ! -d "$agent_dir" ]] && continue
-    json=$($NODE "$AGENTLINTER_BIN" --json --no-share --no-audit "$agent_dir" 2>/dev/null || echo '{}')
-    echo "$json" > "$AL_DIR/${agent}.json"
-  done
-) &
-AL_PID=$!
+if [[ "$AGENTLINTER_AVAILABLE" == "true" && -n "$NODE" && -f "$AGENTLINTER_BIN" ]]; then
+  (
+    for agent in "${AGENTS[@]}"; do
+      agent_dir="${AGENT_DIRS[$agent]}"
+      [[ ! -d "$agent_dir" ]] && continue
+      json=$($NODE "$AGENTLINTER_BIN" --json --no-share --no-audit "$agent_dir" 2>/dev/null || echo '{}')
+      echo "$json" > "$AL_DIR/${agent}.json"
+    done
+  ) &
+  AL_PID=$!
+else
+  AL_PID=""
+fi
 
 # ─── Tool 2: PromptLint (background) ─────────────────────────────────────────
-(
-  for agent in "${AGENTS[@]}"; do
-    agent_dir="${AGENT_DIRS[$agent]}"
-    [[ ! -d "$agent_dir" ]] && continue
-    mkdir -p "$PL_DIR/$agent"
+if [[ "$PROMPTLINT_AVAILABLE" == "true" && -x "$PROMPTLINT_BIN" ]]; then
+  (
+    for agent in "${AGENTS[@]}"; do
+      agent_dir="${AGENT_DIRS[$agent]}"
+      [[ ! -d "$agent_dir" ]] && continue
+      mkdir -p "$PL_DIR/$agent"
 
-    # Discover files to lint based on mode
-    if [[ "$DISCOVER_ALL_MD" == "true" ]]; then
-      md_files=()
-      for mdfile in "$agent_dir"/*.md; do
+      if [[ "$DISCOVER_ALL_MD" == "true" ]]; then
+        md_files=()
+        for mdfile in "$agent_dir"/*.md; do
+          [[ -f "$mdfile" ]] || continue
+          md_files+=("$(basename "$mdfile")")
+        done
+      else
+        md_files=("${STANDARD_MD_FILES[@]}")
+      fi
+
+      for fname in "${md_files[@]}"; do
+        mdfile="$agent_dir/$fname"
         [[ -f "$mdfile" ]] || continue
-        md_files+=("$(basename "$mdfile")")
+        outfile="$PL_DIR/$agent/$fname.json"
+        if ! "$PROMPTLINT_BIN" score "$mdfile" --format json > "$outfile" 2>/dev/null; then
+          echo '{"_error": true, "reason": "PromptLint binary failed"}' > "$outfile"
+        fi
+        if [[ ! -s "$outfile" ]] || ! $PY -c "import json; json.load(open('$outfile'))" 2>/dev/null; then
+          echo '{"_error": true, "reason": "Invalid or empty JSON output"}' > "$outfile"
+        fi
       done
-    else
-      md_files=("${STANDARD_MD_FILES[@]}")
-    fi
-
-    for fname in "${md_files[@]}"; do
-      mdfile="$agent_dir/$fname"
-      [[ -f "$mdfile" ]] || continue
-      outfile="$PL_DIR/$agent/$fname.json"
-      if ! "$PROMPTLINT_BIN" score "$mdfile" --format json > "$outfile" 2>/dev/null; then
-        echo '{"_error": true, "reason": "PromptLint binary failed"}' > "$outfile"
-      fi
-      if [[ ! -s "$outfile" ]] || ! $PY -c "import json; json.load(open('$outfile'))" 2>/dev/null; then
-        echo '{"_error": true, "reason": "Invalid or empty JSON output"}' > "$outfile"
-      fi
     done
-  done
-) &
-PL_PID=$!
+  ) &
+  PL_PID=$!
+else
+  PL_PID=""
+fi
 
 # ─── Tool 3: Convention Checks (background) ──────────────────────────────────
 HG_AGENTS_DIR="$TMPDIR_RUN/hg_agents"
@@ -558,11 +583,11 @@ HG_PID=$!
 
 # ─── Wait for parallel tools ─────────────────────────────────────────────────
 
-echo "  Running tools 1-3 in parallel..."
-wait $AL_PID || { log "WARN: AgentLinter exited $?"; echo "  $(yellow "WARN:") AgentLinter exited abnormally"; true; }
-wait $PL_PID || { log "WARN: PromptLint exited $?"; echo "  $(yellow "WARN:") PromptLint exited abnormally"; true; }
+echo "  Running tools in parallel..." >&2
+[[ -n "$AL_PID" ]] && { wait $AL_PID || { log "WARN: AgentLinter exited $?"; echo "  $(yellow "WARN:") AgentLinter exited abnormally"; true; }; }
+[[ -n "$PL_PID" ]] && { wait $PL_PID || { log "WARN: PromptLint exited $?"; echo "  $(yellow "WARN:") PromptLint exited abnormally"; true; }; }
 wait $HG_PID || { log "WARN: Home-Grow exited $?"; echo "  $(yellow "WARN:") Home-Grow exited abnormally"; true; }
-echo "  $(green "Done") — processing results"
+echo "  $(green "Done") — processing results" >&2
 echo ""
 
 # ═══════════════════════════════════════════════════════════════════════════════

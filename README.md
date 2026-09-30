@@ -13,29 +13,44 @@ Lint your AI skills, system prompts, and agent workspaces for structure, quality
 ```bash
 git clone https://github.com/webuildstuffio/megalint.git
 cd megalint
-
-# Install tool dependencies
-brew install node ripgrep               # macOS (or apt-get on Linux)
-cd apps/agentlinter && bun install && cd ../..
-cd apps/promptlint && uv venv .venv && uv pip install -e . --python .venv/bin/python && cd ../..
-
-# Optional: Prompt Hardener (Tool 4 — requires Anthropic API key)
-cp .env.example .env                    # edit → set ANTHROPIC_API_KEY
-cd apps/prompt-hardener && uv venv .venv && uv pip install -e . --python .venv/bin/python && cd ../..
+./setup.sh            # installs all dependencies (< 60 seconds)
 ```
 
-**Verify:** `./megalint.sh --help` should print usage.
+**Verify:** `./megalint.sh --version` → `megalint 1.0.0`
+
+> **Minimal install** — only `python3` and `ripgrep` are required. If Node.js or tool venvs are missing, megalint gracefully skips those tools and redistributes their weight to the remaining pillars.
+
+<details>
+<summary>Manual install (if you prefer)</summary>
+
+```bash
+# Required
+brew install ripgrep python3             # macOS (apt-get on Linux)
+
+# Optional — each enables one tool
+brew install node                         # → AgentLinter (structure pillar)
+cd apps/agentlinter && bun install && cd ../..  # → build AgentLinter CLI
+
+cd apps/promptlint && uv venv .venv && uv pip install -e . --python .venv/bin/python && cd ../..
+# → PromptLint (quality pillar)
+
+cd apps/prompt-hardener && uv venv .venv && uv pip install -e . --python .venv/bin/python && cd ../..
+# → Prompt Hardener (security pillar, needs ANTHROPIC_API_KEY in .env)
+```
+
+</details>
 
 ## Quick Start
 
 ```bash
-# Lint skills (primary use case)
-./megalint.sh ~/.cursor/skills/bugfix          # one skill
-./megalint.sh --mode skills ~/.cursor/skills/  # all skills
+# Lint one skill
+./megalint.sh ~/.cursor/skills/bugfix
 
-# Lint prompts
-./megalint.sh AGENTS.md CLAUDE.md              # prompt files
-./megalint.sh --mode prompts ./my-prompts/     # directory of .md files
+# Lint all skills in a directory
+./megalint.sh --mode skills ~/.cursor/skills/
+
+# Lint prompt files
+./megalint.sh AGENTS.md CLAUDE.md
 
 # Common options
 ./megalint.sh --preset balanced /path          # ERROR + WARN only (skip INFO)
@@ -43,43 +58,42 @@ cd apps/prompt-hardener && uv venv .venv && uv pip install -e . --python .venv/b
 ./megalint.sh --format json /path              # save JSON report to .reports/
 ./megalint.sh --json /path                     # JSON to stdout (pipe-friendly)
 ./megalint.sh -q /path                         # quiet: errors and warnings only
+./megalint.sh --list-rules                     # show all rules with IDs
 ```
 
 ## Four Interfaces
 
-### CLI
+### 1. CLI
 
 ```bash
 ./megalint.sh [options] [path...]
-./megalint.sh --list-rules                     # show all rules with IDs
 ./megalint.sh --help                           # full options
 ```
 
-### Web Dashboard
+### 2. Web Dashboard
 
 ```bash
 ./megalint.sh --serve                          # → http://localhost:7777
-# or: bun run web/server.ts --port 3000
 ```
 
 Rules explorer, report viewer, score trends, live lint runner, config viewer.
 
-### MCP Server
+### 3. MCP Server
 
-Add to `~/.cursor/mcp.json`:
+Add to `~/.cursor/mcp.json` (or `claude_desktop_config.json`):
 
 ```json
 {
   "megalint": {
     "command": "bun",
-    "args": ["run", "/path/to/megalint/mcp/server.ts"]
+    "args": ["run", "/absolute/path/to/megalint/mcp/server.ts"]
   }
 }
 ```
 
 **Tools:** `megalint_lint` · `megalint_rules` · `megalint_report` · `megalint_trends` · `megalint_config`
 
-### CI (GitHub Actions)
+### 4. CI (GitHub Actions)
 
 ```yaml
 # .github/workflows/megalint.yml
@@ -102,12 +116,14 @@ jobs:
           comment: true         # posts score as PR comment
 ```
 
+See [`ci/megalint.example.yml`](ci/megalint.example.yml) for a full example.
+
 ## How Scoring Works
 
-Five pillars, weighted:
+Five pillars, weighted (configurable in [`megalint.conf`](megalint.conf)):
 
-| Pillar | Tool | What it measures | Weight |
-|--------|------|------------------|:------:|
+| Pillar | Tool | What it measures | Default weight |
+|--------|------|------------------|:--------------:|
 | Structure | AgentLinter | File layout, headings, naming | 25% |
 | Quality | PromptLint | Clarity, security, cost efficiency | 18% |
 | Consistency | Conventions | Cross-item rule adherence | 22% |
@@ -118,7 +134,7 @@ Five pillars, weighted:
 
 **Grades:** S (97+) · A+ (95) · A (93) · A- (90) · B+ (87) · B (83) · B- (80) · C+ (77) · C (73) · C- (70) · D (60) · F (<60)
 
-When a tool is skipped (e.g. Hardener without API key), its weight redistributes proportionally.
+When a tool is skipped (e.g. Hardener without API key, or PromptLint without venv), its weight redistributes proportionally to the remaining pillars.
 
 ## Rule Registry
 
@@ -180,7 +196,7 @@ PASS_THRESHOLD=70       # minimum score to pass
 BLOCKING_ERRORS=true    # any convention ERROR = fail regardless of score
 ```
 
-CLI flags override config for a single run.
+CLI flags override config for a single run. See [`RULES_GUIDE.md`](RULES_GUIDE.md) for the full internals reference.
 
 ## Why Four Tools?
 
@@ -203,6 +219,7 @@ No single tool covers all layers. Together they catch what each misses.
 ```
 megalint.sh              # CLI runner (orchestrates all 4 tools)
 megalint.conf            # Scoring config
+setup.sh                 # One-command dependency installer
 web/
   server.ts              # Web dashboard (Bun)
   dashboard.html         # SPA
@@ -237,17 +254,17 @@ tests/
 bats tests/megalint.bats    # 25 tests
 ```
 
-## Environment
+## Requirements
 
-| Requirement | Version | Why |
-|-------------|---------|-----|
-| Node.js | 18+ | AgentLinter |
-| Python | 3.10+ | PromptLint, Prompt Hardener, scoring |
-| Bun | 1.0+ | Web dashboard, MCP server |
-| ripgrep (`rg`) | any | Convention checks |
-| Bash | 4+ | Shell scripts |
+| Dependency | Required | Why |
+|------------|:--------:|-----|
+| Python 3.10+ | ✓ | Scoring, reports, display |
+| ripgrep (`rg`) | ✓ | Convention checks |
+| Bash 4+ | ✓ | Shell scripts |
+| Node.js 18+ | Optional | AgentLinter (Structure pillar) |
+| Bun 1.0+ | Optional | Web dashboard, MCP server |
 
-Optional: `ANTHROPIC_API_KEY` in `.env` for Prompt Hardener.
+Optional: `ANTHROPIC_API_KEY` in `.env` for Prompt Hardener (Security pillar).
 
 ## Research
 

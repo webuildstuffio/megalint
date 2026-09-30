@@ -162,3 +162,20 @@ assert 'outputs:' in content
   run "$MEGALINT" --help
   [[ "$output" == *"--serve"* ]]
 }
+
+# ─── Version / Setup ──────────────────────────────────────────────────────────
+
+@test "megalint --version prints version" {
+  run "$MEGALINT" --version
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "megalint 1.0.0" ]]
+}
+
+@test "setup.sh exists and is executable" {
+  [[ -x "$SCRIPT_DIR/setup.sh" ]]
+}
+
+@test "setup.sh is syntactically valid" {
+  run bash -n "$SCRIPT_DIR/setup.sh"
+  [[ "$status" -eq 0 ]]
+}
