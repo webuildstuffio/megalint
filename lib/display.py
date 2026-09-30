@@ -124,9 +124,11 @@ def _section_agentlinter(data: dict, agents: list, quiet: bool = False) -> None:
                     ws_rules[rule] = ws_rules.get(rule, 0) + 1
 
         sc = score_color(score)
+        if quiet and crits == 0 and agent_warns == 0:
+            continue
         print(f"  {bold(agent)} {sc}/100")
         categories = pa.get("categories")
-        if categories:
+        if categories and not quiet:
             if isinstance(categories, dict):
                 for cname, cscore in categories.items():
                     print(f"    {cname:<17} {cscore}")
@@ -181,6 +183,14 @@ def _section_promptlint(data: dict, agents: list, quiet: bool = False) -> None:
         if isinstance(files_data, list):
             files_data = {f.get("fname", ""): f for f in files_data if f.get("fname")}
 
+        has_errors = any(fd.get("_error") for fd in files_data.values() if isinstance(fd, dict))
+        has_low_scores = any(
+            int(float(fd.get("overall", 10))) < 7
+            for fd in files_data.values()
+            if isinstance(fd, dict) and not fd.get("_error")
+        )
+        if quiet and not has_errors and not has_low_scores:
+            continue
         print(f"  {bold(agent)}")
         for fname, fd in files_data.items():
             if isinstance(fd, bool):
@@ -193,6 +203,8 @@ def _section_promptlint(data: dict, agents: list, quiet: bool = False) -> None:
                 oi = int(float(overall))
             except (ValueError, TypeError):
                 oi = 0
+            if quiet and oi >= 7:
+                continue
             if oi >= 9:
                 od = green(f"{overall}/10")
             elif oi >= 7:
@@ -224,7 +236,8 @@ def _section_homegrow(data: dict, mode: str = "agents", quiet: bool = False) -> 
     errors = hg.get("errors", 0)
 
     if not checks:
-        print(f"  {yellow('WARN:')} Home-Grow produced no output — check apps/homegrow/run.sh")
+        tool_name = "Conventions" if mode != "agents" else "Home-Grow"
+        print(f"  {yellow('WARN:')} {tool_name} produced no output — check apps/homegrow/run.sh")
     else:
         for c in checks:
             status = c.get("status", "")
@@ -328,7 +341,7 @@ def _section_hardener(data: dict, agents: list, meta: dict) -> None:
     print()
 
 
-def _section_combined(data: dict, agents: list) -> None:
+def _section_combined(data: dict, agents: list, meta: dict | None = None) -> None:
     print()
     print(bold("╔══════════════════════════════════════════════════════════════╗"))
     print()
@@ -388,7 +401,10 @@ def _section_combined(data: dict, agents: list) -> None:
         print(f"  {'Quality (PromptLint)':<24}  {score_color(pill_q)}  {eff_ql}%")
     else:
         print(f"  {'Quality (PromptLint)':<24}  {dim('skipped')}  —")
-    print(f"  {'Consistency (Home-Grow)':<24}  {score_color(pill_co)}  {eff_co}%")
+    _meta = meta or {}
+    mode = _meta.get("mode", "agents")
+    cons_label = "Consistency (Conventions)" if mode != "agents" else "Consistency (Home-Grow)"
+    print(f"  {cons_label:<24}  {score_color(pill_co)}  {eff_co}%")
     if pill_se not in ("N/A", None):
         print(f"  {'Security (Hardener)':<24}  {score_color(pill_se)}  {eff_se}%")
     else:
@@ -440,6 +456,8 @@ def _section_combined(data: dict, agents: list) -> None:
     if len(agents) > 1:
         al_scores = (data.get("agentlinter") or {}).get("scores") or {}
         pl_per = (data.get("promptlint") or {}).get("per_agent") or {}
+        hg_per = (data.get("homegrow") or {}).get("per_agent") or {}
+        hd_per = (data.get("hardener") or {}).get("per_agent") or {}
         budget_per = (data.get("budget") or {}).get("per_agent") or {}
         print(f"  {'Agent':<16}  {'Struct.':<10}  {'Quality':<10}  {'Consist.':<10}  {'Security':<10}  {'Budget':<10}")
         print(f"  {'────────────':<16}  {'────────':<10}  {'────────':<10}  {'────────':<10}  {'────────':<10}  {'────────':<10}")
@@ -450,11 +468,22 @@ def _section_combined(data: dict, agents: list) -> None:
             avg_cl = pl_pa.get("avg_clarity")
             if avg_cl is not None:
                 pl_overall = f"{float(avg_cl) * 10:.1f}"
+            hg_pa = hg_per.get(agent) or {}
+            hg_s = hg_pa.get("score", "—")
+            if hg_s == "—":
+                hg_err = hg_pa.get("errors", 0)
+                hg_warn = hg_pa.get("warnings", 0)
+                hg_pass = hg_pa.get("passes", 0)
+                if hg_pass > 0 or hg_err > 0 or hg_warn > 0:
+                    total = hg_pass + hg_warn + hg_err
+                    hg_s = f"{round(hg_pass / total * 100)}" if total > 0 else "—"
+            hd_pa = hd_per.get(agent) or {}
+            hd_s = hd_pa.get("score", hd_pa.get("avg_score", "—"))
             bu_pa = budget_per.get(agent) or {}
             bu_s = bu_pa.get("avg", "—")
             if bu_s is not None and bu_s != "—":
                 bu_s = str(bu_s)
-            print(f"  {agent:<16}  {str(al_s):<10}  {pl_overall:<10}  {'—':<10}  {'—':<10}  {str(bu_s):<10}")
+            print(f"  {agent:<16}  {str(al_s):<10}  {pl_overall:<10}  {str(hg_s):<10}  {str(hd_s):<10}  {str(bu_s):<10}")
         print()
 
 
@@ -494,7 +523,7 @@ def display(summary_path: str, log_path: str | None = None) -> int:
     _section_homegrow(data, mode, quiet=quiet)
     _section_budget(data, agents)
     _section_hardener(data, agents, meta)
-    _section_combined(data, agents)
+    _section_combined(data, agents, meta)
     _footer(meta, log_path)
 
     passed = (data.get("scoring") or {}).get("passed", True)

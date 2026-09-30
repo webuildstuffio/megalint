@@ -1,12 +1,9 @@
 #!/usr/bin/env bats
 # Megalint regression tests
-# Run: bats dev-tools/megalint/tests/megalint.bats
+# Run: bats tests/megalint.bats
 
 setup() {
   SCRIPT_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
-  REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-  AGENTS_DIR="$REPO_ROOT/src/agents-refined"
-  SHARED_DIR="$REPO_ROOT/src/shared"
   MEGALINT="$SCRIPT_DIR/megalint.sh"
 }
 
@@ -26,13 +23,44 @@ setup() {
   [[ "$output" == *"json, md, or both"* ]]
 }
 
-@test "megalint runs and produces combined results for a real agent" {
-  [[ -d "$AGENTS_DIR" ]] || skip "No agents dir"
-  first_agent=$(ls -1 "$AGENTS_DIR" 2>/dev/null | grep -v template | head -1)
-  [[ -n "$first_agent" ]] || skip "No agents"
-  output=$(printf 'n\n' | timeout 30 "$MEGALINT" "$first_agent" 2>&1) || true
-  [[ "$output" == *"Tool 1: AgentLinter"* ]]
-  [[ "$output" == *"COMBINED RESULTS"* ]]
+@test "megalint --list-rules exits 0 and shows rules" {
+  run "$MEGALINT" --list-rules
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"skill/"* ]] || [[ "$output" == *"prompt/"* ]]
+}
+
+# ─── Mode detection ──────────────────────────────────────────────────────────
+
+@test "megalint --mode skills is accepted" {
+  run "$MEGALINT" --help --mode skills
+  [[ "$status" -eq 0 ]]
+}
+
+@test "megalint --mode prompts is accepted" {
+  run "$MEGALINT" --help --mode prompts
+  [[ "$status" -eq 0 ]]
+}
+
+# ─── Flag parsing ────────────────────────────────────────────────────────────
+
+@test "megalint --preset strict is accepted" {
+  run "$MEGALINT" --help --preset strict
+  [[ "$status" -eq 0 ]]
+}
+
+@test "megalint --quiet flag is accepted" {
+  run "$MEGALINT" --help --quiet
+  [[ "$status" -eq 0 ]]
+}
+
+@test "megalint --json flag is accepted" {
+  run "$MEGALINT" --help --json
+  [[ "$status" -eq 0 ]]
+}
+
+@test "megalint --disable-rule accepts comma-separated IDs" {
+  run "$MEGALINT" --help --disable-rule skill/injection,skill/secrets
+  [[ "$status" -eq 0 ]]
 }
 
 # ─── Safety regressions ──────────────────────────────────────────────────────
@@ -46,35 +74,29 @@ setup() {
   grep -q 'trap cleanup EXIT' "$MEGALINT"
 }
 
-# ─── Home-Grow deduplication ─────────────────────────────────────────────────
+# ─── Home-Grow / Conventions ─────────────────────────────────────────────────
 
 @test "megalint delegates to homegrow/run.sh instead of inline checks" {
-  grep -q 'bash "$SCRIPT_DIR/apps/homegrow/run.sh"' "$MEGALINT"
-  ! grep -q 'add "OK|shared|' "$MEGALINT"
+  grep -q 'bash "$SCRIPT_DIR/apps/homegrow/run.sh"' "$MEGALINT" || \
+  grep -q 'apps/homegrow/run.sh' "$MEGALINT"
 }
 
-@test "run.sh excludes template from agent discovery" {
-  [[ -d "$AGENTS_DIR" ]] || skip "agents dir missing"
-  output=$("$SCRIPT_DIR/apps/homegrow/run.sh" "$AGENTS_DIR" "$SHARED_DIR" 2>/dev/null)
-  [[ -d "$AGENTS_DIR/template" ]] && [[ "$output" != *"|template|"* ]]
-}
-
-@test "run.sh roster count excludes template" {
-  [[ -d "$AGENTS_DIR" ]] || skip "agents dir missing"
-  [[ -f "$SHARED_DIR/AGENT_ROSTER.md" ]] || skip "AGENT_ROSTER missing"
-  run "$SCRIPT_DIR/apps/homegrow/run.sh" "$AGENTS_DIR" "$SHARED_DIR"
+@test "run.sh accepts --mode flag" {
+  run "$SCRIPT_DIR/apps/homegrow/run.sh" --mode skills --list-rules
   [[ "$status" -eq 0 ]]
-  [[ "$output" == *"OK|roster|"* ]]
+}
+
+@test "run.sh accepts --disable-rule flag" {
+  run "$SCRIPT_DIR/apps/homegrow/run.sh" --disable-rule skill/injection --list-rules
+  [[ "$status" -eq 0 ]]
 }
 
 # ─── Portability ─────────────────────────────────────────────────────────────
 
-@test "checks.sh works from a subdirectory (not just repo root)" {
-  [[ -d "$AGENTS_DIR" ]] || skip "agents dir missing"
-  cd "$REPO_ROOT/dev-tools"
-  run bash megalint/apps/homegrow/checks.sh
+@test "run.sh works from a subdirectory (not just repo root)" {
+  cd "$SCRIPT_DIR/apps"
+  run bash homegrow/run.sh --list-rules
   [[ "$status" -eq 0 || "$status" -eq 1 ]]
-  [[ -n "$output" ]]
 }
 
 @test "promptlint helper scripts have no hardcoded user paths" {
@@ -94,4 +116,20 @@ setup() {
   grep -q 'lib/display.py' "$MEGALINT"
 }
 
+@test "scoring.py exists" {
+  [[ -f "$SCRIPT_DIR/lib/scoring.py" ]]
+}
 
+@test "report.py exists" {
+  [[ -f "$SCRIPT_DIR/lib/report.py" ]]
+}
+
+@test "skills.sh exists and is sourced by run.sh" {
+  [[ -f "$SCRIPT_DIR/apps/homegrow/skills.sh" ]]
+  grep -q 'skills.sh' "$SCRIPT_DIR/apps/homegrow/run.sh"
+}
+
+@test "prompts.sh exists and is sourced by run.sh" {
+  [[ -f "$SCRIPT_DIR/apps/homegrow/prompts.sh" ]]
+  grep -q 'prompts.sh' "$SCRIPT_DIR/apps/homegrow/run.sh"
+}

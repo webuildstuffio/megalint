@@ -452,10 +452,10 @@ def process_all(
         "total_pl_cost": total_pl_cost,
         "total_pl_files": total_pl_files,
         "total_pl_failures": total_pl_failures,
-        "hg_passes": homegrow["passes"],
-        "hg_infos": homegrow["infos"],
-        "hg_warnings": homegrow["warnings"],
-        "hg_errors": homegrow["errors"],
+        "hg_passes": homegrow.get("passes", 0),
+        "hg_infos": homegrow.get("infos", 0),
+        "hg_warnings": homegrow.get("warnings", 0),
+        "hg_errors": homegrow.get("errors", 0),
         "hardener_ran": hardener_ran,
         "ph_dir": ph_dir,
         "weight_structure": config.weight_structure,
@@ -535,6 +535,9 @@ def process_all(
         "timestamp": meta.get("timestamp", ""),
         "agents_list": agents,
         "mode": mode,
+        "disabled_rules": meta.get("disabled_rules", ""),
+        "preset": meta.get("preset", ""),
+        "quiet": meta.get("quiet", False),
     }
     if hardener:
         summary_meta["hardener_tokens_in"] = hardener.get("actual_tokens_in", 0)

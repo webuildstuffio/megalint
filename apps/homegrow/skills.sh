@@ -39,7 +39,11 @@ check_skill_file_exists() {
     local skill_dir="$AGENTS_DIR/$skill"
     [[ ! -d "$skill_dir" ]] && continue
     if [[ -f "$skill_dir/SKILL.md" ]]; then
-      emit OK "$skill" "[skill/file-exists] SKILL.md exists"
+      if [[ ! -s "$skill_dir/SKILL.md" ]]; then
+        emit ERROR "$skill" "[skill/file-exists] SKILL.md is empty — must contain skill instructions"
+      else
+        emit OK "$skill" "[skill/file-exists] SKILL.md exists"
+      fi
     else
       emit ERROR "$skill" "[skill/file-exists] SKILL.md missing — every skill must have a SKILL.md file"
     fi
@@ -108,7 +112,7 @@ check_skill_dangerous_commands() {
     local skill_dir="$AGENTS_DIR/$skill"
     [[ ! -d "$skill_dir" ]] && continue
     local found=0
-    for f in "$skill_dir"/*.md; do
+    for f in "$skill_dir"/*.md "$skill_dir"/*.sh "$skill_dir"/*.py "$skill_dir"/*.ts "$skill_dir"/*.js; do
       [[ -f "$f" ]] || continue
       if rg -qP "$dangerous_patterns" "$f" 2>/dev/null; then
         local fname
@@ -315,6 +319,7 @@ check_skill_tool_boundaries() {
     local refs_tools
     refs_tools=$(rg -ci '(tool|command|function|api|endpoint|call|invoke|execute|run|shell|bash|terminal|cli)' "$f" 2>/dev/null || echo 0)
     if [[ "$refs_tools" -lt 2 ]]; then
+      emit OK "$skill" "[skill/tool-boundaries] few tool references — boundary check not applicable"
       continue
     fi
     if rg -qi '(prefer|use|instead of|rather than|not.*use|avoid.*using|do not.*call|only use)' "$f" 2>/dev/null; then
@@ -340,6 +345,8 @@ check_skill_idempotent() {
       else
         emit WARN "$skill" "[skill/idempotent] references destructive operations without safeguards — add confirmation/dry-run/backup guidance. Claude Code: 'check with the user before proceeding' for irreversible actions"
       fi
+    else
+      emit OK "$skill" "[skill/idempotent] no destructive operations"
     fi
   done
 }

@@ -32,15 +32,6 @@ cyan()   { printf "\033[36m%s\033[0m" "$1"; }
 bold()   { printf "\033[1m%s\033[0m" "$1"; }
 dim()    { printf "\033[2m%s\033[0m" "$1"; }
 
-score_color() {
-  [[ "$1" == "N/A" ]] && { dim "$1"; return; }
-  local s
-  s=$(printf "%.0f" "$1" 2>/dev/null || echo 0)
-  if [[ $s -ge 90 ]]; then green "$1"
-  elif [[ $s -ge 70 ]]; then yellow "$1"
-  else red "$1"; fi
-}
-
 # ─── Load .env ────────────────────────────────────────────────────────────────
 
 for envfile in "$SCRIPT_DIR/.env" "$REPO_ROOT/.env"; do
@@ -106,8 +97,13 @@ while [[ $# -gt 0 ]]; do
     --preset=*)            PRESET_FLAG="${1#*=}"; shift ;;
     --quiet|-q)            QUIET_FLAG=true; shift ;;
     --json)                JSON_FLAG=true; shift ;;
-    --config|-c)           source "$2"; shift 2 ;;
-    --config=*)            source "${1#*=}"; shift ;;
+    --config|-c)
+      [[ -f "$2" ]] || { echo "Error: config file not found: $2" >&2; exit 1; }
+      source "$2"; shift 2 ;;
+    --config=*)
+      _cfgval="${1#*=}"
+      [[ -f "$_cfgval" ]] || { echo "Error: config file not found: $_cfgval" >&2; exit 1; }
+      source "$_cfgval"; shift ;;
     *)                     POSITIONAL_ARGS+=("$1"); shift ;;
   esac
 done
@@ -169,7 +165,12 @@ if [[ "$MODE" == "auto" || -z "$MODE" ]]; then
     if [[ -d "$first_arg" ]]; then
       DETECT_TARGET="$(cd "$first_arg" && pwd)"
     elif [[ -f "$first_arg" ]]; then
-      MODE="prompts"
+      # Check if the file is a SKILL.md (treat as skills mode, not prompts)
+      if [[ "$(basename "$first_arg")" == "SKILL.md" ]]; then
+        DETECT_TARGET="$(cd "$(dirname "$first_arg")" && pwd)"
+      else
+        MODE="prompts"
+      fi
     fi
   elif [[ -n "$AGENTS_DIR" && -d "$AGENTS_DIR" ]]; then
     DETECT_TARGET="$AGENTS_DIR"
@@ -761,6 +762,12 @@ s['meta']['hardener_tokens_out'] = $PH_ACTUAL_OUT
 s['meta']['hardener_model'] = '$HARDENER_MODEL'
 with open('$TMPDIR_RUN/summary.json', 'w') as f: json.dump(s, f, indent=2)
 " 2>/dev/null
+fi
+
+# --json: dump summary.json to stdout and exit (machine-readable mode)
+if [[ "$JSON_FLAG" == "true" ]]; then
+  cat "$TMPDIR_RUN/summary.json"
+  exit 0
 fi
 
 # Display full report

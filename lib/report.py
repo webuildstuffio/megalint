@@ -101,7 +101,7 @@ def _normalize_input(m):
             "git_dirty": meta.get("git_dirty", git.get("dirty", False)),
             "git_msg": meta.get("git_msg") or git.get("message", ""),
             "agents_list": agent_names,
-            "hardener_model": meta.get("model"),
+            "hardener_model": meta.get("hardener_model") or meta.get("model"),
             "hardener_tokens_in": meta.get("hardener_tokens_in", 0),
             "hardener_tokens_out": meta.get("hardener_tokens_out", 0),
             "combined": scoring.get("combined", 0),
@@ -301,16 +301,17 @@ def build_report_data(m):
         },
         "agents": agents_data,
         "homegrow": {
-            "passes": m["hg_passes"],
+            "passes": m.get("hg_passes", 0),
             "infos": m.get("hg_infos", 0),
-            "warnings": m["hg_warnings"],
-            "errors": m["hg_errors"],
+            "warnings": m.get("hg_warnings", 0),
+            "errors": m.get("hg_errors", 0),
             "checks": hg_results,
         },
     }
 
 
 def write_json(report, output_dir, run_id):
+    os.makedirs(output_dir, exist_ok=True)
     outpath = os.path.join(output_dir, f"report_{run_id}.json")
     with open(outpath, "w") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
@@ -419,7 +420,7 @@ def _build_recommendations(report):
             }
         )
 
-    # Low: AgentLinter critical/error diagnostics (should be rare, but flag them)
+    # High: AgentLinter critical/error diagnostics
     for name, ad in agents_data.items():
         for d in ad.get("agentlinter", {}).get("diagnostics", []):
             sev = d.get("severity", "")
@@ -496,6 +497,7 @@ def _build_recommendations(report):
 
 
 def write_markdown(report, output_dir, run_id):
+    os.makedirs(output_dir, exist_ok=True)
     outpath = os.path.join(output_dir, f"report_{run_id}.md")
     meta = report["meta"]
     scoring = report["scoring"]
@@ -825,6 +827,10 @@ def main():
         else:
             i += 1
 
+    for req in ("input", "format", "output_dir"):
+        if req not in args:
+            print(f"Missing --{req.replace('_', '-')}", file=sys.stderr)
+            sys.exit(1)
     with open(args["input"]) as f:
         m = json.load(f)
 
