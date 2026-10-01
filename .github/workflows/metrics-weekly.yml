@@ -2,7 +2,7 @@
 name: metrics-weekly
 "on":
   schedule:
-    - cron: "0 13 * * 0"  # Sundays 09:00 ET
+    - cron: "0 13 * * *"  # daily 09:00 ET
   release:
     types: [published]
   workflow_dispatch:
@@ -10,8 +10,9 @@ name: metrics-weekly
 jobs:
   snapshot:
     uses: >-
-      webuildstuffio/repo-review/.github/workflows/metrics-reusable.yml@da0a07a17d2504691ba3ac1d42d29e51b31fff8b
+      webuildstuffio/repo-review/.github/workflows/metrics-reusable.yml@206487d9a11a53864f659eb24b65cddf7eaa344e
     with:
       run_snapshot: true
       language: typescript
+      activity_window: '24 hours ago'
     secrets: inherit
