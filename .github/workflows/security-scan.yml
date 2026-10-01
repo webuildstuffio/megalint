@@ -1,0 +1,39 @@
+---
+# Snyk replacement: per-PR fast secret+vulnerability scan plus a
+# weekly Trivy deep scan. Logic lives in the reusable workflow;
+# this file is just the triggers.
+#
+# Tier-driven (repo-review#144, #145): the reusable resolves this repo's
+# tier (megalint = active via the rr-tier property) and applies
+# must-be-clean behavior automatically.
+#
+# Reusable: webuildstuffio/repo-review (canonical host — the
+# gh-actions-and-skills copy cannot be called cross-repo)
+#   .github/workflows/security-scan-reusable.yml@<full-sha>
+# (v1.1.0 tier-driven: resolves caller tier, must-be-clean for active)
+#
+# Added by the tier leverage program (repo-review#139).
+name: security-scan
+"on":
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 9 * * 1"  # Mondays 09:00 UTC — weekly deep scan
+  workflow_dispatch:
+
+jobs:
+  fast:
+    if: >-
+      github.event_name == 'pull_request' || github.event_name == 'push'
+    uses: webuildstuffio/repo-review/.github/workflows/security-scan-reusable.yml@95bfdc42dc4b5c3d084f68900af9787be35eac77  # yamllint disable-line rule:line-length
+    secrets: inherit
+
+  deep:
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch'
+    uses: webuildstuffio/repo-review/.github/workflows/security-scan-reusable.yml@95bfdc42dc4b5c3d084f68900af9787be35eac77  # yamllint disable-line rule:line-length
+    with:
+      deep: true
+    secrets: inherit
